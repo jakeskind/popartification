@@ -1,7 +1,7 @@
-# artbutmakeitculture
+# popartification
 
 Find the painting that looks *exactly* like any photo — the engine behind
-[@artbutmakeitculture](https://instagram.com/artbutmakeitculture).
+the @artbutmakeitculture concept.
 
 ## How to use it
 
