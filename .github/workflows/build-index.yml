@@ -1,0 +1,47 @@
+name: Build the art index
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 6 1 * *"   # monthly refresh
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest   # Apple Vision needs macOS; free on public repos
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pillow
+        run: python3 -m pip install --user pillow
+
+      - name: Restore previous index (incremental rebuild)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$HOME/.artmatch"
+          if gh release download index --repo "$GITHUB_REPOSITORY" --pattern "artmatch-index.tar.gz" --dir /tmp 2>/dev/null; then
+            tar -xzf /tmp/artmatch-index.tar.gz -C "$HOME"
+            echo "restored existing index: $(ls "$HOME/.artmatch/images" | wc -l) images"
+          else
+            echo "no previous index — building from scratch"
+          fi
+
+      - name: Harvest museum corpora
+        run: python3 scripts/artmatch_harvest.py aic cleveland met
+
+      - name: Extract features
+        run: rm -f "$HOME/.artmatch/features.json" && python3 scripts/artmatch.py --build
+
+      - name: Publish index as release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf /tmp/artmatch-index.tar.gz -C "$HOME" .artmatch
+          gh release create index --repo "$GITHUB_REPOSITORY" --title "Art index" \
+            --notes "Prebuilt matcher index (thumbnails + features)" 2>/dev/null || true
+          gh release upload index /tmp/artmatch-index.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+          echo "index published: $(du -h /tmp/artmatch-index.tar.gz | cut -f1)"

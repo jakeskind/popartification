@@ -1,0 +1,78 @@
+name: Match an image to art
+
+# Open an issue with a photo pasted in the body — this workflow downloads the
+# image, finds its art-history twins, commits the contact sheet, and replies
+# on the issue with the ranking.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  match:
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pillow
+        run: python3 -m pip install --user pillow
+
+      - name: Extract the image from the issue
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          body = os.environ.get("BODY", "")
+          match = (re.search(r'!\[[^\]]*\]\((https?://[^)\s]+)\)', body)
+                   or re.search(r'src="(https?://[^"]+)"', body)
+                   or re.search(r'(https?://\S+\.(?:jpg|jpeg|png|webp)\S*)', body, re.I))
+          if not match:
+              print("::error::No image found in the issue body — paste or drag a photo in.")
+              sys.exit(1)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"QUERY_IMAGE_URL={match.group(1)}\n")
+          EOF
+
+      - name: Download the query image
+        run: curl -sL "$QUERY_IMAGE_URL" -o /tmp/query.jpg && file /tmp/query.jpg
+
+      - name: Restore the index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download index --repo "$GITHUB_REPOSITORY" --pattern "artmatch-index.tar.gz" --dir /tmp
+          tar -xzf /tmp/artmatch-index.tar.gz -C "$HOME"
+          echo "index: $(ls "$HOME/.artmatch/images" | wc -l) images"
+
+      - name: Run the matcher
+        run: |
+          python3 scripts/artmatch.py /tmp/query.jpg --top 6 | tee /tmp/match.txt
+          cp "$TMPDIR/artmatch_result.jpg" /tmp/sheet.jpg 2>/dev/null || cp /tmp/artmatch_result.jpg /tmp/sheet.jpg
+
+      - name: Commit the contact sheet
+        run: |
+          mkdir -p results
+          cp /tmp/sheet.jpg "results/issue-${{ github.event.issue.number }}.jpg"
+          git config user.name "artmatch-bot"
+          git config user.email "actions@github.com"
+          git add results && git commit -m "Match result for #${{ github.event.issue.number }}" && git push
+
+      - name: Reply on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHEET_URL="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/results/issue-${{ github.event.issue.number }}.jpg"
+          {
+            echo "![contact sheet]($SHEET_URL)"
+            echo
+            echo '```'
+            sed -n '/top .* matches:/,$p' /tmp/match.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
