@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""Find paintings that look like a given image.
+"""Find the painting (or the *section* of a painting) that mirrors any image.
 
-Feed it any image and it searches the ~2,900-work corpus bundled with Muse
-(museum catalogs + era paintings — all with public image URLs), ranking by:
+v2 engine. The index stores, for every artwork:
+  - a whole-image Vision fingerprint
+  - fingerprints of five region crops (center + quadrants)
+  - a fingerprint per detected FACE CROP, with head angles (yaw/roll/pitch)
+  - color histograms, face layout, and body-pose skeletons
 
-  - structure  : Apple Vision feature-print similarity (on-device image
-                 embedding — overall composition/content)
-  - figures    : detected human figures — count and layout agreement
-  - color      : palette histogram + spatial color-grid similarity
-  - title      : fuzzy match against --title, when given
+Face-dominant queries (a close-up like a celebrity still) are matched
+face-to-face: crop fingerprints plus head-pose agreement with PITCH weighted
+hardest — "head tilted down, looking down" matches only downcast faces. The
+winning match can be a cropped detail of a larger canvas, and the contact
+sheet shows that crop.
 
 Usage:
-    python3 Scripts/artmatch.py --build              # one-time corpus index
-    python3 Scripts/artmatch.py photo.jpg            # match!
-    python3 Scripts/artmatch.py photo.jpg --title "Girl with a Pearl Earring"
-    python3 Scripts/artmatch.py photo.jpg --top 8
+    python3 scripts/artmatch.py --build            # (re)index new works
+    python3 scripts/artmatch.py photo.jpg [--top 6] [--title "..."]
 
-Outputs a ranked list and saves a side-by-side contact sheet.
+Cache in ~/.artmatch (override: ARTMATCH_HOME).
 """
 
 import difflib
@@ -31,22 +32,31 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 REPO = Path(__file__).resolve().parent.parent
 CACHE = Path(os.environ.get("ARTMATCH_HOME", Path.home() / ".artmatch"))
 IMAGES = CACHE / "images"
-FEATURES_FILE = CACHE / "features.json"
+META_FILE = CACHE / "index_meta.json"
+VECS_FILE = CACHE / "index_vecs.f32"
 HELPER_SRC = Path(__file__).resolve().parent / "artmatch_vision.swift"
 HELPER_BIN = CACHE / "artmatch_vision"
-HEADERS = {"User-Agent": "MuseArtMatch/1.0 (help@collectmuse.com)"}
+HEADERS = {"User-Agent": "MuseArtMatch/2.0 (help@collectmuse.com)"}
+
+DIM = 768
+REGIONS = {  # normalized (left, top, width, height), top-left origin
+    "center": (0.25, 0.25, 0.5, 0.5),
+    "q1": (0.0, 0.0, 0.55, 0.55),
+    "q2": (0.45, 0.0, 0.55, 0.55),
+    "q3": (0.0, 0.45, 0.55, 0.55),
+    "q4": (0.45, 0.45, 0.55, 0.55),
+}
 
 
 # ── Corpus ────────────────────────────────────────────────────────────────
 
 def corpus():
-    """id → work metadata: every harvested corpus file (corpus/*.json), plus
-    Muse's bundled catalogs when running inside the Canvas repo."""
     works = {}
     era_path = REPO / "Canvas/Resources/EraPaintings.json"
     if era_path.exists():
@@ -86,33 +96,34 @@ def thumb_url(image_url, width=360):
 
 def download_thumbs(works):
     IMAGES.mkdir(parents=True, exist_ok=True)
-    missing = {qid: work for qid, work in works.items()
-               if not (IMAGES / f"{qid}.jpg").exists()}
+    missing = {wid: work for wid, work in works.items()
+               if not (IMAGES / f"{wid}.jpg").exists()}
     if not missing:
         return
     print(f"downloading {len(missing)} thumbnails…")
 
     def fetch(item):
-        qid, work = item
-        target = IMAGES / f"{qid}.jpg"
-        # Wikimedia rate-limits bursts — retry with backoff.
+        wid, work = item
         for attempt in range(4):
             try:
-                request = urllib.request.Request(thumb_url(work["image"]), headers=HEADERS)
+                url = thumb_url(work["image"]) if "wikimedia" in work["image"] else work["image"]
+                request = urllib.request.Request(url, headers=HEADERS)
                 with urllib.request.urlopen(request, timeout=60) as response:
                     data = response.read()
-                Image.open(__import__("io").BytesIO(data)).convert("RGB").save(target, "JPEG", quality=85)
+                import io
+                image = Image.open(io.BytesIO(data)).convert("RGB")
+                image.thumbnail((360, 360))
+                image.save(IMAGES / f"{wid}.jpg", "JPEG", quality=85)
                 return None
             except Exception as error:  # noqa: BLE001
                 if attempt == 3:
-                    return f"{qid}: {error}"
+                    return f"{wid}: {error}"
                 import time
                 time.sleep(4 * (attempt + 1))
         return None
 
-    done = 0
+    done, failures = 0, []
     with ThreadPoolExecutor(max_workers=4) as pool:
-        failures = []
         for result in pool.map(fetch, missing.items()):
             done += 1
             if result:
@@ -120,10 +131,10 @@ def download_thumbs(works):
             if done % 250 == 0:
                 print(f"  {done}/{len(missing)} ({len(failures)} failed)")
     if failures:
-        print(f"  ({len(failures)} failed — skipped; sample: {failures[0]})")
+        print(f"  ({len(failures)} failed — skipped)")
 
 
-# ── Feature extraction ────────────────────────────────────────────────────
+# ── Vision helper ─────────────────────────────────────────────────────────
 
 def ensure_helper():
     if HELPER_BIN.exists() and HELPER_BIN.stat().st_mtime >= HELPER_SRC.stat().st_mtime:
@@ -133,8 +144,7 @@ def ensure_helper():
     subprocess.run(["swiftc", "-O", str(HELPER_SRC), "-o", str(HELPER_BIN)], check=True)
 
 
-def vision_features(paths):
-    """path → {"v": [...], "figures": [...]} via the Vision helper."""
+def vision_features(paths, quiet=False):
     ensure_helper()
     results = {}
     batch = 400
@@ -150,23 +160,51 @@ def vision_features(paths):
             if "v" in row:
                 results[row["path"]] = {"v": row["v"], "figures": row.get("figures", []),
                                         "poses": row.get("poses", [])}
-        if len(paths) > batch:
-            print(f"  vision features {min(start + batch, len(paths))}/{len(paths)}")
+        if not quiet and len(paths) > batch:
+            print(f"  vision pass {min(start + batch, len(paths))}/{len(paths)}")
     return results
 
 
 def color_features(path):
-    """64-bin RGB histogram + 4×4 spatial color grid."""
     image = Image.open(path).convert("RGB").resize((128, 128))
     histogram = [0] * 64
     pixels = list(image.getdata())
     for r, g, b in pixels:
         histogram[(r // 64) * 16 + (g // 64) * 4 + (b // 64)] += 1
     total = len(pixels)
-    histogram = [h / total for h in histogram]
     grid_image = image.resize((4, 4))
-    grid = [channel / 255 for pixel in grid_image.getdata() for channel in pixel]
-    return {"hist": histogram, "grid": grid}
+    return {"hist": [h / total for h in histogram],
+            "grid": [c / 255 for p in grid_image.getdata() for c in p]}
+
+
+def face_crop_box(figure, image_size):
+    """Vision face rect (bottom-left origin, normalized) → padded pixel crop
+    box (top-left origin)."""
+    width, height = image_size
+    x, y, w, h = figure[0], figure[1], figure[2], figure[3]
+    top = 1 - y - h
+    pad = 0.55 * max(w, h)
+    left = max(0, (x - pad)) * width
+    upper = max(0, (top - pad)) * height
+    right = min(1, (x + w + pad)) * width
+    lower = min(1, (top + h + pad)) * height
+    if right - left < 24 or lower - upper < 24:
+        return None
+    return (int(left), int(upper), int(right), int(lower))
+
+
+def crop_norm_rect(box, image_size):
+    width, height = image_size
+    left, upper, right, lower = box
+    return [left / width, upper / height, (right - left) / width, (lower - upper) / height]
+
+
+# ── Index build ───────────────────────────────────────────────────────────
+
+def load_meta():
+    if META_FILE.exists():
+        return json.loads(META_FILE.read_text())
+    return {"dim": DIM, "works": {}, "entries": []}
 
 
 def build_index():
@@ -174,59 +212,82 @@ def build_index():
     print(f"corpus: {len(works)} works")
     download_thumbs(works)
 
-    features = json.loads(FEATURES_FILE.read_text()) if FEATURES_FILE.exists() else {}
-    todo = [qid for qid in works
-            if qid not in features and (IMAGES / f"{qid}.jpg").exists()]
-    if todo:
-        print(f"extracting features for {len(todo)} works…")
-        vision = vision_features([IMAGES / f"{qid}.jpg" for qid in todo])
-        for qid in todo:
-            key = str(IMAGES / f"{qid}.jpg")
-            if key not in vision:
+    meta = load_meta()
+    todo = [wid for wid in works
+            if wid not in meta["works"] and (IMAGES / f"{wid}.jpg").exists()]
+    if not todo:
+        print(f"index up to date: {len(meta['works'])} works, {len(meta['entries'])} vectors")
+        return works, meta
+
+    print(f"indexing {len(todo)} new works…")
+    base = vision_features([IMAGES / f"{wid}.jpg" for wid in todo])
+
+    crop_dir = Path(tempfile.mkdtemp(prefix="artmatch_crops_"))
+    crop_specs = []   # (crop_path, work_id, kind, rect, angles)
+    new_entries, new_vectors = [], []
+
+    for wid in todo:
+        key = str(IMAGES / f"{wid}.jpg")
+        if key not in base:
+            continue
+        feats = base[key]
+        scalars = color_features(IMAGES / f"{wid}.jpg")
+        meta["works"][wid] = {"figures": feats["figures"], "poses": feats["poses"],
+                              "hist": scalars["hist"], "grid": scalars["grid"]}
+        new_entries.append({"work": wid, "kind": "full", "rect": None, "angles": None})
+        new_vectors.append(feats["v"])
+
+        image = Image.open(IMAGES / f"{wid}.jpg").convert("RGB")
+        for kind, (rx, ry, rw, rh) in REGIONS.items():
+            box = (int(rx * image.width), int(ry * image.height),
+                   int((rx + rw) * image.width), int((ry + rh) * image.height))
+            path = crop_dir / f"{wid}__region_{kind}.jpg"
+            image.crop(box).save(path, "JPEG", quality=85)
+            crop_specs.append((path, wid, "region", [rx, ry, rw, rh], None))
+        for i, figure in enumerate(feats["figures"][:4]):
+            box = face_crop_box(figure, image.size)
+            if not box:
                 continue
-            entry = vision[key]
-            entry.update(color_features(IMAGES / f"{qid}.jpg"))
-            features[qid] = entry
-        FEATURES_FILE.write_text(json.dumps(features))
-    print(f"index ready: {len(features)} works indexed")
-    return works, features
+            path = crop_dir / f"{wid}__face_{i}.jpg"
+            image.crop(box).save(path, "JPEG", quality=85)
+            angles = figure[4:7] if len(figure) >= 7 else [0, 0, 0]
+            crop_specs.append((path, wid, "face", crop_norm_rect(box, image.size), angles))
+
+    print(f"fingerprinting {len(crop_specs)} crops…")
+    crop_features = vision_features([spec[0] for spec in crop_specs])
+    for path, wid, kind, rect, angles in crop_specs:
+        feats = crop_features.get(str(path))
+        if feats:
+            new_entries.append({"work": wid, "kind": kind, "rect": rect, "angles": angles})
+            new_vectors.append(feats["v"])
+
+    # Append normalized vectors to the binary store.
+    array = np.asarray(new_vectors, dtype=np.float32)
+    norms = np.linalg.norm(array, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    array /= norms
+    with open(VECS_FILE, "ab") as handle:
+        handle.write(array.tobytes())
+    meta["entries"].extend(new_entries)
+    META_FILE.write_text(json.dumps(meta))
+
+    import shutil
+    shutil.rmtree(crop_dir, ignore_errors=True)
+    print(f"index ready: {len(meta['works'])} works, {len(meta['entries'])} vectors")
+    return works, meta
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────
 
-def cosine(a, b):
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(x * x for x in b))
-    return dot / (na * nb) if na and nb else 0
-
-
-def color_score(qf, cf):
-    intersection = sum(min(a, b) for a, b in zip(qf["hist"], cf["hist"]))
-    grid_distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(qf["grid"], cf["grid"]))
-                              / len(qf["grid"]))
-    return 0.5 * intersection + 0.5 * max(0, 1 - grid_distance * 2)
-
-
-def figure_score(query_figures, candidate_figures):
-    qn, cn = len(query_figures), len(candidate_figures)
-    if qn == 0 and cn == 0:
-        return 0.6   # both figure-free: mildly compatible, not a strong signal
-    if qn == 0 or cn == 0:
-        return 0.1
-    count_score = min(qn, cn) / max(qn, cn)
-    # Greedy centroid matching for layout agreement.
-    remaining = [(c[0] + c[2] / 2, c[1] + c[3] / 2) for c in candidate_figures]
-    distances = []
-    for figure in query_figures:
-        qx, qy = figure[0] + figure[2] / 2, figure[1] + figure[3] / 2
-        if not remaining:
-            break
-        best = min(remaining, key=lambda p: (p[0] - qx) ** 2 + (p[1] - qy) ** 2)
-        distances.append(math.dist((qx, qy), best))
-        remaining.remove(best)
-    layout = max(0, 1 - (sum(distances) / len(distances)) * 2) if distances else 0
-    return 0.5 * count_score + 0.5 * layout
+def angle_similarity(query_angles, candidate_angles):
+    """Head-pose agreement, pitch loudest: 'looking down' must match looking
+    down. Angles are radians (yaw, roll, pitch)."""
+    dyaw = abs(query_angles[0] - candidate_angles[0])
+    droll = abs(query_angles[1] - candidate_angles[1])
+    dpitch = abs(query_angles[2] - candidate_angles[2])
+    return (0.50 * max(0, 1 - dpitch / 0.40)
+            + 0.30 * max(0, 1 - droll / 0.60)
+            + 0.20 * max(0, 1 - dyaw / 0.90))
 
 
 BONES = [("neck", "nose"), ("neck", "root"),
@@ -243,110 +304,167 @@ BONES = [("neck", "nose"), ("neck", "root"),
 
 
 def pose_angles(pose):
-    """Bone → absolute angle, for every bone whose joints were both detected."""
     angles = {}
     for a, b in BONES:
         if a in pose and b in pose:
-            angles[(a, b)] = math.atan2(pose[b][1] - pose[a][1],
-                                        pose[b][0] - pose[a][0])
+            angles[(a, b)] = math.atan2(pose[b][1] - pose[a][1], pose[b][0] - pose[a][0])
     return angles
 
 
-def pose_pair_score(query_pose, candidate_pose):
-    """Mean angular agreement across shared bones — the 'literally the same
-    pose' number. None when too few bones overlap to judge."""
-    qa, ca = pose_angles(query_pose), pose_angles(candidate_pose)
-    shared = set(qa) & set(ca)
-    if len(shared) < 3:
-        return None
-    agreement = [math.cos(qa[bone] - ca[bone]) for bone in shared]
-    return max(0, (sum(agreement) / len(agreement) + 1) / 2)
+def body_pose_score(query_poses, candidate_poses):
+    best = None
+    for query_pose in query_poses:
+        qa = pose_angles(query_pose)
+        if len(qa) < 4:
+            continue   # face close-ups yield degenerate skeletons — skip
+        for candidate_pose in candidate_poses:
+            ca = pose_angles(candidate_pose)
+            shared = set(qa) & set(ca)
+            if len(shared) < 4:
+                continue
+            agreement = sum(math.cos(qa[b] - ca[b]) for b in shared) / len(shared)
+            score = max(0, (agreement + 1) / 2)
+            if best is None or score > best:
+                best = score
+    return best
 
 
-def head_pose_score(query_figures, candidate_figures):
-    """Gaze-direction agreement between the primary faces (yaw/roll/pitch)."""
-    if not query_figures or not candidate_figures:
-        return None
-    biggest = lambda figs: max(figs, key=lambda f: f[2] * f[3])  # noqa: E731
-    qf, cf = biggest(query_figures), biggest(candidate_figures)
-    if len(qf) < 7 or len(cf) < 7:
-        return None
-    deltas = [abs(qf[i] - cf[i]) for i in (4, 5, 6)]
-    return max(0, 1 - sum(deltas) / 3 / 0.9)
-
-
-def pose_score(query, candidate):
-    """The exactness axis: best skeletal match across figure pairs, blended
-    with gaze direction. Falls back gracefully when skeletons are missing
-    (common in stylized paintings)."""
-    body = None
-    for query_pose in query.get("poses", []):
-        for candidate_pose in candidate.get("poses", []):
-            score = pose_pair_score(query_pose, candidate_pose)
-            if score is not None and (body is None or score > body):
-                body = score
-    head = head_pose_score(query.get("figures", []), candidate.get("figures", []))
-    if body is not None and head is not None:
-        return 0.75 * body + 0.25 * head
-    if body is not None:
-        return body
-    if head is not None:
-        return head
-    return None
+def color_score(query, work):
+    intersection = sum(min(a, b) for a, b in zip(query["hist"], work["hist"]))
+    grid_distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(query["grid"], work["grid"]))
+                              / len(query["grid"]))
+    return 0.5 * intersection + 0.5 * max(0, 1 - grid_distance * 2)
 
 
 def title_score(query_title, candidate_title):
     a, b = query_title.lower(), candidate_title.lower()
     ratio = difflib.SequenceMatcher(None, a, b).ratio()
     ta, tb = set(a.split()), set(b.split())
-    jaccard = len(ta & tb) / len(ta | tb) if ta | tb else 0
-    return max(ratio, jaccard)
+    return max(ratio, len(ta & tb) / len(ta | tb) if ta | tb else 0)
 
 
-def match(query_path, query_title=None, top=5):
-    works, features = build_index()
+def match(query_path, query_title=None, top=6):
+    works, meta = build_index()
+    vectors = np.fromfile(VECS_FILE, dtype=np.float32).reshape(-1, DIM)
+    entries = meta["entries"]
 
-    query = vision_features([Path(query_path)]).get(str(Path(query_path)))
+    query = vision_features([Path(query_path)], quiet=True).get(str(Path(query_path)))
     if not query:
         raise SystemExit("couldn't extract features from the query image")
     query.update(color_features(query_path))
+    query_v = np.asarray(query["v"], dtype=np.float32)
+    query_v /= (np.linalg.norm(query_v) or 1)
 
-    # A grayscale query (B&W stills, film frames) says nothing about palette —
-    # scoring color would just drag the ranking toward dark monochrome works.
-    image = Image.open(query_path).convert("RGB").resize((64, 64))
-    saturation = sum(max(p) - min(p) for p in image.getdata()) / (64 * 64)
+    image = Image.open(query_path).convert("RGB")
+    saturation = sum(max(p) - min(p) for p in image.resize((64, 64)).getdata()) / 4096
     grayscale = saturation < 12
+
+    # Dominant face → face-first matching, with a fingerprint of the query's
+    # own face crop.
+    face_v, face_angles = None, None
+    if query["figures"]:
+        biggest = max(query["figures"], key=lambda f: f[2] * f[3])
+        if biggest[2] * biggest[3] >= 0.04:
+            box = face_crop_box(biggest, image.size)
+            if box:
+                crop_path = Path(tempfile.gettempdir()) / "artmatch_query_face.jpg"
+                image.crop(box).save(crop_path, "JPEG", quality=90)
+                crop_feats = vision_features([crop_path], quiet=True).get(str(crop_path))
+                if crop_feats:
+                    face_v = np.asarray(crop_feats["v"], dtype=np.float32)
+                    face_v /= (np.linalg.norm(face_v) or 1)
+                    face_angles = list(biggest[4:7]) if len(biggest) >= 7 else [0, 0, 0]
+    face_mode = face_v is not None
+    if face_mode:
+        print("(face-dominant query — matching face crops, pitch-weighted)")
     if grayscale:
         print("(query is grayscale — ignoring the color axis)")
 
-    weights = ({"visual": 0.30, "pose": 0.30, "color": 0.10, "figures": 0.10, "title": 0.20}
-               if query_title else
-               {"visual": 0.35, "pose": 0.35, "color": 0.15, "figures": 0.15, "title": 0})
-    if grayscale:
-        weights["visual"] += weights["color"]
+    sims_full = vectors @ query_v
+    sims_face = vectors @ face_v if face_mode else None
+
+    best_region = {}   # work → (score, entry_index)
+    best_face = {}
+    for index, entry in enumerate(entries):
+        wid = entry["work"]
+        if entry["kind"] in ("full", "region"):
+            score = float(sims_full[index])
+            if wid not in best_region or score > best_region[wid][0]:
+                best_region[wid] = (score, index)
+        elif entry["kind"] == "face" and face_mode:
+            fingerprint = float(sims_face[index])
+            angles = entry.get("angles") or [0, 0, 0]
+            score = 0.55 * fingerprint + 0.45 * angle_similarity(face_angles, angles)
+            if wid not in best_face or score > best_face[wid][0]:
+                best_face[wid] = (score, index)
+
+    # In face mode the face axis dominates: whole-image "region" similarity is
+    # mostly tonal/background and buries the gaze signal (a B&W query would
+    # just retrieve B&W-looking works). Verified on the Ariana test: the pure
+    # face axis surfaces downcast Madonnas; the old 50/25 blend surfaced
+    # grayscale lockets.
+    if face_mode:
+        weights = {"face": 0.72, "region": 0.13, "color": 0.08, "figures": 0.07}
+    else:
+        weights = {"region": 0.50, "body": 0.20, "color": 0.15, "figures": 0.15}
+    if grayscale and "color" in weights:
+        weights["face" if face_mode else "region"] += weights["color"]
         weights["color"] = 0
+    if query_title:
+        weights = {k: v * 0.85 for k, v in weights.items()}
+        weights["title"] = 0.15
+
+    def figure_layout_score(candidate_figures):
+        qn, cn = len(query["figures"]), len(candidate_figures)
+        if qn == 0 and cn == 0:
+            return 0.6
+        if qn == 0 or cn == 0:
+            return 0.1
+        return min(qn, cn) / max(qn, cn)
 
     scored = []
-    for qid, feats in features.items():
-        if qid not in works:
+    for wid, work_meta in meta["works"].items():
+        if wid not in works:
             continue
-        pose = pose_score(query, feats)
-        parts = {
-            "visual": max(0, cosine(query["v"], feats["v"])),
-            # No skeleton/face on either side → neutral-low, not zero: stylized
-            # works shouldn't be erased, just not rewarded for exactness.
-            "pose": pose if pose is not None else 0.3,
-            "color": color_score(query, feats),
-            "figures": figure_score(query["figures"], feats["figures"]),
-            "title": title_score(query_title, works[qid]["title"]) if query_title else 0,
-        }
-        total = sum(weights[k] * parts[k] for k in weights)
-        scored.append((total, parts, qid))
+        parts = {}
+        region_score, region_index = best_region.get(wid, (0, None))
+        parts["region"] = max(0, region_score)
+        entry_index = region_index
+        if face_mode:
+            face_score, face_index = best_face.get(wid, (0.15, None))
+            parts["face"] = face_score
+            if face_index is not None and face_score >= region_score:
+                entry_index = face_index
+        else:
+            body = body_pose_score(query["poses"], work_meta["poses"])
+            parts["body"] = body if body is not None else 0.35
+        parts["color"] = color_score(query, work_meta) if not grayscale else 0
+        parts["figures"] = figure_layout_score(work_meta["figures"])
+        if query_title:
+            parts["title"] = title_score(query_title, works[wid]["title"])
+        total = sum(weights.get(k, 0) * v for k, v in parts.items())
+        scored.append((total, parts, wid, entry_index))
+
     scored.sort(reverse=True, key=lambda s: s[0])
-    return [(total, parts, qid, works[qid]) for total, parts, qid in scored[:top]]
+    results = []
+    for total, parts, wid, entry_index in scored[:top]:
+        entry = entries[entry_index] if entry_index is not None else None
+        results.append((total, parts, wid, works[wid], entry))
+    return results
 
 
 # ── Output ────────────────────────────────────────────────────────────────
+
+def matched_image(wid, entry):
+    """The matched painting — cropped to the winning detail when a crop won."""
+    image = Image.open(IMAGES / f"{wid}.jpg").convert("RGB")
+    if entry and entry["kind"] != "full" and entry.get("rect"):
+        rx, ry, rw, rh = entry["rect"]
+        box = (int(rx * image.width), int(ry * image.height),
+               int((rx + rw) * image.width), int((ry + rh) * image.height))
+        return image.crop(box), entry["kind"]
+    return image, "full"
+
 
 def contact_sheet(query_path, matches, out_path):
     tile, gap, caption_height = 340, 12, 58
@@ -355,50 +473,53 @@ def contact_sheet(query_path, matches, out_path):
                               tile + caption_height + 2 * gap), (14, 22, 18))
     draw = ImageDraw.Draw(sheet)
 
-    def paste(image_path, index, lines):
-        image = Image.open(image_path).convert("RGB")
-        image.thumbnail((tile, tile))
+    def paste(image, index, lines):
+        # Scale up as well as down — face-crop details are small.
+        scale = min(tile / image.width, tile / image.height)
+        image = image.resize((max(1, int(image.width * scale)),
+                              max(1, int(image.height * scale))), Image.LANCZOS)
         x = gap + index * (tile + gap)
         sheet.paste(image, (x + (tile - image.width) // 2,
                             gap + (tile - image.height) // 2))
         for row, line in enumerate(lines[:3]):
             draw.text((x + 2, tile + gap + 4 + row * 16), line[:44], fill=(232, 226, 210))
 
-    paste(query_path, 0, ["YOUR IMAGE"])
-    for index, (total, _, qid, work) in enumerate(matches, start=1):
-        paste(IMAGES / f"{qid}.jpg", index,
+    paste(Image.open(query_path).convert("RGB"), 0, ["YOUR IMAGE"])
+    for index, (total, _, wid, work, entry) in enumerate(matches, start=1):
+        image, kind = matched_image(wid, entry)
+        detail = " · detail" if kind != "full" else ""
+        paste(image, index,
               [f"#{index}  {work['title']}",
                f"{work['artist']}" + (f", {work['year']}" if work["year"] else ""),
-               f"{work['museum']}  ({total:.2f})".strip()])
+               f"{work['museum']}{detail}  ({total:.2f})".strip()])
     sheet.save(out_path, "JPEG", quality=90)
 
 
 def main():
-    args = [a for a in sys.argv[1:]]
+    args = sys.argv[1:]
     if "--build" in args:
         build_index()
         return
     if not args:
         raise SystemExit(__doc__)
     query_path = args[0]
-    query_title = None
-    top = 5
-    if "--title" in args:
-        query_title = args[args.index("--title") + 1]
-    if "--top" in args:
-        top = int(args[args.index("--top") + 1])
+    query_title = args[args.index("--title") + 1] if "--title" in args else None
+    top = int(args[args.index("--top") + 1]) if "--top" in args else 6
 
     matches = match(query_path, query_title, top)
     print(f"\ntop {len(matches)} matches:")
-    for rank, (total, parts, qid, work) in enumerate(matches, start=1):
-        detail = " ".join(f"{k}={v:.2f}" for k, v in parts.items() if v)
+    for rank, (total, parts, wid, work, entry) in enumerate(matches, start=1):
+        detail = " ".join(f"{k}={v:.2f}" for k, v in parts.items())
+        kind = entry["kind"] if entry else "full"
         line = f"{rank}. [{total:.3f}] {work['title']} — {work['artist']}"
         if work["year"]:
             line += f" ({work['year']})"
         if work["museum"]:
             line += f" · {work['museum']}"
+        if kind != "full":
+            line += f"  [{kind} crop]"
         print(line)
-        print(f"     {detail}  wikidata.org/wiki/{qid}")
+        print(f"     {detail}  ({wid})")
 
     out = Path(tempfile.gettempdir()) / "artmatch_result.jpg"
     contact_sheet(query_path, matches, out)
