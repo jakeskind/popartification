@@ -380,8 +380,36 @@ def match(query_path, query_title=None, top=6):
     if grayscale:
         print("(query is grayscale — ignoring the color axis)")
 
+    # Mirror matching: a leftward gaze should match rightward paintings —
+    # compare both the query and its horizontal flip, keep the better.
+    from PIL import ImageOps
+    flip_path = Path(tempfile.gettempdir()) / "artmatch_query_flip.jpg"
+    ImageOps.mirror(image).save(flip_path, "JPEG", quality=90)
+    flip = vision_features([flip_path], quiet=True).get(str(flip_path))
+    flip_v = None
+    if flip:
+        flip_v = np.asarray(flip["v"], dtype=np.float32)
+        flip_v /= (np.linalg.norm(flip_v) or 1)
+
+    flip_face_v, flip_face_angles = None, None
+    if face_mode:
+        flip_face_path = Path(tempfile.gettempdir()) / "artmatch_query_face_flip.jpg"
+        ImageOps.mirror(Image.open(
+            Path(tempfile.gettempdir()) / "artmatch_query_face.jpg")).save(
+            flip_face_path, "JPEG", quality=90)
+        flip_feats = vision_features([flip_face_path], quiet=True).get(str(flip_face_path))
+        if flip_feats:
+            flip_face_v = np.asarray(flip_feats["v"], dtype=np.float32)
+            flip_face_v /= (np.linalg.norm(flip_face_v) or 1)
+            # Mirroring negates yaw and roll; pitch is unchanged.
+            flip_face_angles = [-face_angles[0], -face_angles[1], face_angles[2]]
+
     sims_full = vectors @ query_v
+    if flip_v is not None:
+        sims_full = np.maximum(sims_full, vectors @ flip_v)
     sims_face = vectors @ face_v if face_mode else None
+    if face_mode and flip_face_v is not None:
+        sims_face = np.maximum(sims_face, vectors @ flip_face_v)
 
     best_region = {}   # work → (score, entry_index)
     best_face = {}
@@ -394,7 +422,10 @@ def match(query_path, query_title=None, top=6):
         elif entry["kind"] == "face" and face_mode:
             fingerprint = float(sims_face[index])
             angles = entry.get("angles") or [0, 0, 0]
-            score = 0.55 * fingerprint + 0.45 * angle_similarity(face_angles, angles)
+            gaze = angle_similarity(face_angles, angles)
+            if flip_face_angles is not None:
+                gaze = max(gaze, angle_similarity(flip_face_angles, angles))
+            score = 0.55 * fingerprint + 0.45 * gaze
             if wid not in best_face or score > best_face[wid][0]:
                 best_face[wid] = (score, index)
 
