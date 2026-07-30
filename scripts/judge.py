@@ -282,6 +282,8 @@ def match_preview(query_image, art_image, row):
     """Side-by-side of the two images AFTER the judge's zoom/rotation — the
     user compares the actual match, not the whole canvases."""
     art = art_image
+    if row.get("mirror"):
+        art = art.transpose(Image.FLIP_LEFT_RIGHT)
     rotate = int(row.get("rotate") or 0) % 360
     if rotate in ROTATE_OPS:
         art = art.transpose(ROTATE_OPS[rotate])
@@ -446,11 +448,14 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
         "image that should sit side by side so the twinning is undeniable. "
         "Boxes are [left, top, width, height] as fractions of the image. "
         "rotate is degrees counterclockwise applied to the ARTWORK BEFORE its "
-        "box is taken (0 unless a rotation genuinely improves the match).\n\n"
+        "box is taken (0 unless a rotation genuinely improves the match). "
+        "mirror (true/false): flip the artwork horizontally so head tilt, gaze "
+        "and the anomaly sit on the SAME side as the photo — direction must "
+        "agree (house rule 1); mirror whenever it improves agreement.\n\n"
         f"Reply with STRICT JSON only:\n"
         '{"ranking": [{"candidate": <n>, "visual": <0-10>, "concept": <0-10>, '
         '"why": "<one short sentence>", '
-        '"query_box": [l, t, w, h], "art_box": [l, t, w, h], "rotate": 0}, ...], '
+        '"query_box": [l, t, w, h], "art_box": [l, t, w, h], "rotate": 0, "mirror": false}, ...], '
         '"winner": <n>, "caption": "<one witty line for the post, no hashtags>"}'
         f"\nRank the best {keep}, and the top 3 MUST come from three different art "
         "families or subject types — if several Madonnas (or several of anything) "
@@ -507,7 +512,7 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
                 "medium": work.get("medium", ""),
                 "hires": work.get("hires") or work.get("image"),
                 "query_box": row.get("query_box"), "art_box": row.get("art_box"),
-                "rotate": row.get("rotate", 0),
+                "rotate": row.get("rotate", 0), "mirror": bool(row.get("mirror")),
                 "visual": row.get("visual"), "concept": row.get("concept"),
                 "why": row.get("why", ""),
                 "thumb": thumb.name if thumb else None,

@@ -50,9 +50,11 @@ def fit(image, target_w, target_h):
 
 
 def compose(query_path, art_path, out_path, query_box=None, art_box=None,
-            rotate=0):
+            rotate=0, mirror=False):
     query = boxed(Image.open(query_path).convert("RGB"), query_box)
     art = Image.open(art_path).convert("RGB")
+    if mirror:
+        art = art.transpose(Image.FLIP_LEFT_RIGHT)
     if int(rotate) % 360 in ROTATE_OPS:
         art = art.transpose(ROTATE_OPS[int(rotate) % 360])
     art = boxed(art, art_box)
@@ -86,4 +88,5 @@ if __name__ == "__main__":
     art_box = parse_box(argv[argv.index("--art-box") + 1]) \
         if "--art-box" in argv else None
     rotate = int(argv[argv.index("--rotate") + 1]) if "--rotate" in argv else 0
-    compose(argv[0], argv[1], argv[2], query_box, art_box, rotate)
+    compose(argv[0], argv[1], argv[2], query_box, art_box, rotate,
+            mirror="--mirror" in argv)

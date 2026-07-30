@@ -69,6 +69,8 @@ jobs:
               parts += ["--art-box", ",".join(str(x) for x in chosen["art_box"])]
           if chosen.get("rotate"):
               parts += ["--rotate", str(chosen["rotate"])]
+          if chosen.get("mirror"):
+              parts += ["--mirror"]
           print(" ".join(parts))
           PYEOF
           )
