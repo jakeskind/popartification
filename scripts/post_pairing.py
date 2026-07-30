@@ -11,7 +11,6 @@ Usage:
         --year "15th century" \
         --museum "The Metropolitan Museum of Art" \
         --tags "arianagrande yesand" \
-        [--line "one witty line from the judge"] \
         [--dry-run]
 
 Needs POPARTIFICATION_IG_TOKEN (env or ~/.muse-marketing.env). The image URL
@@ -42,11 +41,11 @@ def token():
 
 
 def build_caption(args):
+    # House style: the artwork's name IS the first line — no quips — then the
+    # details on emoji lines, pop identity in the hashtags.
     lines = []
-    if args.get("line"):
-        lines += [args["line"], ""]
     if args.get("title"):
-        lines.append(f"🎨 {args['title']}")
+        lines.append(args["title"])
     if args.get("artist"):
         lines.append(f"👤 {args['artist']}")
     if args.get("medium"):
@@ -97,7 +96,7 @@ def main():
         raise SystemExit(__doc__)
     image_url = argv[0]
     args = {}
-    for flag in ("title", "artist", "medium", "year", "museum", "tags", "line"):
+    for flag in ("title", "artist", "medium", "year", "museum", "tags"):
         if f"--{flag}" in argv:
             args[flag] = argv[argv.index(f"--{flag}") + 1]
     caption = build_caption(args)
