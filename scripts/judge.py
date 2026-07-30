@@ -20,6 +20,7 @@ import io
 import json
 import os
 import plistlib
+import re
 import sys
 import urllib.request
 from pathlib import Path
@@ -99,21 +100,168 @@ def describe_for_search(key, query_path, context):
                 '{"archetype": "...", "keywords": ["...", "..."]}'},
             image_block(Image.open(query_path)),
         ]}]})
-    reply = reply[reply.index("{"): reply.rindex("}") + 1]
-    data = json.loads(reply)
+    data = loads_loose(reply)
     if data.get("archetype"):
         print(f"archetype: {data['archetype']}")
     return data.get("keywords", []), data.get("archetype", "")
+
+
+def loads_loose(reply):
+    """Parse JSON from a model reply, tolerating the usual damage: markdown
+    fences, prose around the object, and unescaped double quotes inside string
+    values (a caption mentioning a "title" breaks strict JSON)."""
+    text = reply.strip()
+    if "```" in text:
+        text = re.sub(r"```(?:json)?", "", text)
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("no JSON object in reply")
+    end = text.rfind("}")
+    if end < start:
+        # Truncated mid-object (token cap): salvage by closing the structure
+        # after the last complete element.
+        cut = max(text.rfind("},"), text.rfind('",'), text.rfind("],"))
+        if cut == -1:
+            raise ValueError("reply truncated before any complete element")
+        text = text[start:cut + 1].rstrip(",")
+        opens = text.count("{") - text.count("}")
+        brackets = text.count("[") - text.count("]")
+        text += "]" * max(0, brackets) + "}" * max(0, opens)
+    else:
+        text = text[start:end + 1]
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Escape double quotes that sit inside a value rather than delimiting it.
+    repaired, in_string, escaped = [], False, False
+    for index, char in enumerate(text):
+        if escaped:
+            repaired.append(char); escaped = False; continue
+        if char == "\\":
+            repaired.append(char); escaped = True; continue
+        if char == '"':
+            if not in_string:
+                in_string = True; repaired.append(char); continue
+            # Closing quote only when the next meaningful char structurally ends
+            # the string; otherwise it is content and must be escaped.
+            rest = text[index + 1:].lstrip()
+            if rest[:1] in (",", "}", "]", ":"):
+                in_string = False; repaired.append(char)
+            else:
+                repaired.append('\\"')
+            continue
+        repaired.append(char)
+    return json.loads("".join(repaired))
+
+
+def lessons_for_prompt():
+    """The accumulated house rules and case log, for injection into prompts."""
+    path = Path(__file__).resolve().parent.parent / "LESSONS.md"
+    if not path.exists():
+        return ""
+    text = path.read_text()
+    parts = []
+    if "## Judging rules" in text:
+        body = text.split("## Judging rules", 1)[1].split("## Architectural")[0]
+        parts.append("HOUSE RULES (learned from past reviews):\n" + body.strip())
+    if "## Case log" in text:
+        parts.append("PAST CASES:\n" + text.split("## Case log", 1)[1].strip()[:900])
+    return "\n\n" + "\n\n".join(parts) if parts else ""
+
+
+def plan_strategy(key, query_path, context, lessons=""):
+    """The reasoning stage: before searching, decide WHAT KIND of match this
+    image wants. Some pairings live on the image (pose, composition, palette);
+    some live on the context (an event, a nickname, a myth the subject evokes);
+    the best live on both. Claude enumerates several competing hypotheses, each
+    with its own search vocabulary and a weight, and every one gets retrieved.
+
+    This is what turns "Spider-Man premiere" into "Arachne" without being
+    told — the concept route is pursued as a first-class hypothesis rather than
+    hoped for as a side effect of describing the picture.
+    """
+    reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 3000,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text":
+                "You are the search strategist for an account that pairs pop-culture "
+                "photos with artworks. Before any searching happens, decide what kind "
+                "of match THIS image wants.\n\n"
+                f"Context: {context or 'unknown — infer from the image'}\n"
+                f"{lessons}\n"
+                "Think about which axis carries this pairing:\n"
+                "- IMAGE: pose, gesture, composition, palette, texture. Wins when the "
+                "photo has a striking, recognisable form.\n"
+                "- CONTEXT: what the moment MEANS — the event, the film being "
+                "premiered, the rivalry, the nickname, the myth the subject evokes. "
+                "Wins when a title or subject can land a joke or resonance (a "
+                "Spider-Man premiere wants Arachne; Messi wants a goat; a clownish "
+                "figure wants a painting titled 'The Clown').\n"
+                "- BOTH: the ideal — a work that looks like the photo AND means "
+                "something about it.\n\n"
+                "Give 3 or 4 competing hypotheses. Make at least one a pure IMAGE "
+                "hypothesis and at least one a pure CONTEXT hypothesis (dig for "
+                "mythology, etymology, wordplay, the film's title, the team's mascot, "
+                "the athlete's epithet). Weights sum to 1.0.\n\n"
+                'Reply with STRICT JSON only:\n'
+                '{"read": "<one sentence on what this image is and what it wants>", '
+                '"hypotheses": [{"axis": "image|context|both", "idea": "<the leap>", '
+                '"keywords": ["...", "..."], "weight": 0.4}, ...]}'},
+            image_block(Image.open(query_path)),
+        ]}]})
+    plan = loads_loose(reply)
+    print(f"\nREAD: {plan.get('read', '')}")
+    for h in plan.get("hypotheses", []):
+        print(f"  [{h.get('axis', '?'):7}] w={h.get('weight', 0):.2f}  {h.get('idea', '')}")
+        print(f"            → {', '.join(h.get('keywords', [])[:9])}")
+    return plan
+
+
+def record_case(query_label, plan, winner_work, verdict):
+    """Append what won and which axis carried it, so future strategy calls see
+    precedent. The file is injected into later prompts — the system's memory."""
+    path = Path(__file__).resolve().parent.parent / "LESSONS.md"
+    if not path.exists():
+        return
+    text = path.read_text()
+    if "## Case log" not in text:
+        text += "\n\n## Case log\n\nWhat won, and which axis carried it.\n"
+    axes = ", ".join(f"{h.get('axis')}({h.get('weight')})"
+                     for h in plan.get("hypotheses", [])[:4])
+    entry = (f"\n- **{query_label}** → *{winner_work.get('title')}* "
+             f"({winner_work.get('artist') or 'unknown'}). "
+             f"Hypotheses: {axes}. {verdict.get('caption', '')}\n")
+    path.write_text(text + entry)
+
+
+def used_works():
+    """Works already used in a published pairing — the case log is the ledger.
+    A feed that keeps reaching for the same Madonna gets boring fast."""
+    path = Path(__file__).resolve().parent.parent / "LESSONS.md"
+    if not path.exists() or "## Case log" not in path.read_text():
+        return set()
+    log = path.read_text().split("## Case log", 1)[1]
+    return {title.strip().lower()
+            for title in re.findall(r"\*([^*]+)\*", log)}
 
 
 def judge(query_path, context="", pool=16, keep=5, no_live=False):
     key = anthropic_key()
     if not key:
         raise SystemExit("no ANTHROPIC_API_KEY available")
+    already_used = used_works()
+
+    # Reasoning first: what kind of match does this image want?
+    plan = plan_strategy(key, query_path, context, lessons_for_prompt())
+    hypotheses = plan.get("hypotheses") or []
+    if plan.get("read"):
+        context = f"{context} | read: {plan['read']}"
 
     visual = match(query_path, top=pool)
     keywords, archetype = describe_for_search(key, query_path, context)
-    print(f"search keywords: {', '.join(keywords)}")
+    # Every hypothesis contributes its own search vocabulary.
+    for h in hypotheses:
+        keywords += [k for k in h.get("keywords", []) if k not in keywords]
     if archetype:
         context = f"{context} | gesture archetype: {archetype}"
 
@@ -141,18 +289,16 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
                     "image": hit["image"], "hires": hit.get("hires"),
                     "path": str(hit["path"])}
             candidates.append((0.0, {"live": 1.0}, hit["id"], work, None, "none"))
+    if already_used:
+        before = len(candidates)
+        candidates = [c for c in candidates
+                      if c[3].get("title", "").strip().lower() not in already_used]
+        if before != len(candidates):
+            print(f"(skipped {before - len(candidates)} already-used work(s))")
     print(f"judging {len(candidates)} candidates ({len(visual)} visual + "
           f"{local_count - len(visual)} by title + {len(candidates) - local_count} live)")
 
-    # Accumulated editorial rules — every past correction sharpens this call.
-    lessons_path = Path(__file__).resolve().parent.parent / "LESSONS.md"
-    lessons = ""
-    if lessons_path.exists():
-        text = lessons_path.read_text()
-        if "## Judging rules" in text:
-            body = text.split("## Judging rules", 1)[1]
-            lessons = "\n\nHOUSE RULES (learned from past reviews):\n" + \
-                      body.split("## Architectural")[0].strip()
+    lessons = lessons_for_prompt()
 
     content = [
         {"type": "text", "text":
@@ -191,12 +337,15 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
         '{"ranking": [{"candidate": <n>, "visual": <0-10>, "concept": <0-10>, '
         '"why": "<one short sentence>"}, ...], '
         '"winner": <n>, "caption": "<one witty line for the post, no hashtags>"}'
-        f"\nRank the best {keep}, weighting visual 60 / concept 40."})
+        f"\nRank the best {keep}. Default weighting is visual 60 / concept 40, but "
+        f"this image was read as: {plan.get('read', 'n/a')} — with hypotheses "
+        + "; ".join(f"{h.get('axis')} ({h.get('weight')}): {h.get('idea')}"
+                    for h in hypotheses)
+        + ". Weight the axes accordingly."})
 
     reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 4000,
                          "messages": [{"role": "user", "content": content}]})
-    reply = reply[reply.index("{"): reply.rindex("}") + 1]
-    verdict = json.loads(reply)
+    verdict = loads_loose(reply)
 
     print("\nJUDGE RANKING (visual 60 / concept 40):")
     for row in verdict["ranking"]:
@@ -212,6 +361,10 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
     if winner[3].get("medium"):
         print(f"  medium: {winner[3]['medium']}")
     print(f"CAPTION IDEA: {verdict['caption']}")
+    try:
+        record_case(Path(query_path).stem, plan, winner[3], verdict)
+    except Exception:  # noqa: BLE001 - logging must never break a run
+        pass
     return verdict, candidates
 
 

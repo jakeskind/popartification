@@ -134,7 +134,7 @@ def _commons(keyword, per_keyword):
     found = []
     data = _json(COMMONS_API + "?" + urllib.parse.urlencode({
         "action": "query", "list": "search", "format": "json",
-        "srsearch": f"{keyword} painting|etching|drawing|sculpture",
+        "srsearch": keyword,
         "srnamespace": "6", "srlimit": str(per_keyword * 4),
     }))
     titles = [r["title"] for r in (data or {}).get("query", {}).get("search", [])]
@@ -295,7 +295,111 @@ def _wikidata(keyword, per_keyword):
     return found
 
 
-SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata)
+# ── Wikidata: artwork BY NAME ──────────────────────────────────────────────
+# The route a human uses: "The Kiss by Klimt" -> go get it. Without this the
+# stack cannot retrieve the world's most famous paintings, because they live in
+# museums with no open API (The Kiss is in the Belvedere, Vienna) and a
+# "depicts" query can never find a work by its own title.
+
+ART_CLASSES = {
+    "Q3305213",   # painting
+    "Q838948",    # work of art
+    "Q860861",    # sculpture
+    "Q93184",     # drawing
+    "Q11060274",  # print
+    "Q18761202",  # watercolor painting
+    "Q125191",    # photograph
+    "Q1885014",   # fresco
+}
+
+
+def _wikidata_named(keyword, per_keyword):
+    """Find an artwork by its title. Callers often pass "The Kiss Klimt" —
+    title plus artist — but Wikidata's label is just "The Kiss", so try
+    progressively shorter prefixes until something matches."""
+    found = []
+    words = keyword.split()
+    variants = [keyword]
+    for cut in (len(words) - 1, len(words) - 2):
+        if 1 <= cut < len(words):
+            variants.append(" ".join(words[:cut]))
+    ids, matched_variant = [], keyword
+    for variant in variants:
+        search = _json("https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode({
+            "action": "wbsearchentities", "search": variant, "language": "en",
+            "format": "json", "limit": "8",
+        }))
+        ids = [r["id"] for r in (search or {}).get("search") or []]
+        if ids:
+            matched_variant = variant
+            break
+    if not ids:
+        return found
+    # When the caller named an artist, prefer works by that artist.
+    artist_hint = keyword[len(matched_variant):].strip().lower()
+    entities = _json("https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode({
+        "action": "wbgetentities", "ids": "|".join(ids[:8]), "format": "json",
+        "props": "claims|labels", "languages": "en",
+    }))
+    for qid, entity in ((entities or {}).get("entities") or {}).items():
+        if len(found) >= per_keyword:
+            break
+        claims = entity.get("claims") or {}
+
+        def ids_for(prop):
+            out = []
+            for claim in claims.get(prop, []):
+                value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
+                if isinstance(value, dict) and value.get("id"):
+                    out.append(value["id"])
+            return out
+
+        if not ART_CLASSES & set(ids_for("P31")):
+            continue
+        images = [c["mainsnak"]["datavalue"]["value"]
+                  for c in claims.get("P18", [])
+                  if c.get("mainsnak", {}).get("datavalue")]
+        if not images:
+            continue
+        encoded = urllib.parse.quote(images[0].replace(" ", "_"))
+        base = f"https://commons.wikimedia.org/wiki/Special:FilePath/{encoded}"
+
+        # Creator and inception, resolved to labels where cheap.
+        creator_ids = ids_for("P170")
+        artist = ""
+        if creator_ids:
+            creator = _json("https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode({
+                "action": "wbgetentities", "ids": creator_ids[0], "format": "json",
+                "props": "labels", "languages": "en"}))
+            artist = (((creator or {}).get("entities") or {}).get(creator_ids[0], {})
+                      .get("labels", {}).get("en", {}).get("value", ""))
+        year = ""
+        for claim in claims.get("P571", []):
+            time_value = claim.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+            match = re.search(r"([+-]?\d{1,4})", time_value.get("time", ""))
+            if match:
+                year = match.group(1).lstrip("+")
+                break
+
+        hit = {
+            "id": f"wdn_{qid}",
+            "title": entity.get("labels", {}).get("en", {}).get("value", "Untitled"),
+            "artist": artist,
+            "year": year,
+            "museum": "Wikidata / Wikimedia",
+            "medium": "",
+            "image": base + "?width=700",
+            "hires": base + "?width=2000",
+        }
+        if artist_hint and artist_hint in artist.lower():
+            found.insert(0, hit)   # the artist the caller asked for
+        else:
+            found.append(hit)
+    return found
+
+
+SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata,
+           _wikidata_named)
 
 
 def search_museums(keywords, limit=12, per_keyword=3):

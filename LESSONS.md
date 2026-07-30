@@ -50,6 +50,14 @@ embedding similarity.
 | Two figures walking, tall + small | player with mascot | expressionist pairs, processions |
 | Pure geometry / texture | ball in net, spinning blur, crowd pattern | Kandinsky, pointillism, mosaics, roundels |
 
+10. **Reach for the canon first.** If a world-famous artwork fits the moment,
+   it beats an obscure one — recognition is half the joy. An engagement photo
+   wants Klimt's *The Kiss*, not an anonymous Madonna. Ask "what is the most
+   famous painting of this subject?" before settling.
+11. **Match the relationship, not just the pose.** A Madonna and Child is
+   mother-and-child; it must never stand in for lovers. Check that the
+   *relationship* depicted rhymes with the photo's.
+
 ## Architectural lessons
 
 - **Pixel statistics have a ceiling.** Hand-tuned colour/pose features are good
@@ -63,7 +71,20 @@ embedding similarity.
   golden field and a dark golden field are the same palette.
 - **Retrieval recall is the bottleneck.** Homer's *The Veteran in a New Field*
   was in the corpus but never reached the judge.
+- **Named-artwork lookup is mandatory.** The stack could search by keyword,
+  by subject, and by visual similarity, but had no way to fetch a famous work
+  BY NAME — so Klimt's *The Kiss* was unreachable (it lives in the Belvedere,
+  which has no open API, and a "depicts" query cannot find a work by its own
+  title). Wikidata label search fixed it; the artist name has to be stripped
+  from the query because labels are just "The Kiss".
 - **The corpus is the real constraint.** The reference feed leans heavily on
   modern and abstract work (Kandinsky, expressionists, Cubists, pointillists)
   that our Met + Cleveland public-domain harvest barely contains. Expanding
   into pre-1930 modernism is worth more than any scoring tweak.
+
+
+## Case log
+
+What won, and which axis carried it.
+
+- **taylor** → *Virgin and Child* (Mino da Fiesole (Mino di Giovanni)). Hypotheses: image(0.35), context(0.3), both(0.25), image(0.1). Forget the ring — it's the Pietà pose that sealed the engagement.
