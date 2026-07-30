@@ -58,10 +58,11 @@ jobs:
       - name: Judge (live museum search, no local index)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TITLE: ${{ github.event.issue.title }}
         run: |
           mkdir -p /tmp/out
           python3 scripts/judge.py /tmp/query.jpg \
-            --context "${{ github.event.issue.title }}" \
+            --context "$TITLE" \
             --pool 10 --keep 5 --json /tmp/out/result.json | tee /tmp/judge.log
 
       - name: Commit results (thumbs + verdict + case log)

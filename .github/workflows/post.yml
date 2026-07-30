@@ -18,7 +18,8 @@ jobs:
       !github.event.issue.pull_request &&
       (github.event.comment.user.login == github.repository_owner ||
        github.event.comment.user.login == 'peppertheapp') &&
-      startsWith(github.event.comment.body, 'post')
+      (startsWith(github.event.comment.body, 'post') ||
+       startsWith(github.event.comment.body, 'Post'))
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
