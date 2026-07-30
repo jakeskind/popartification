@@ -81,18 +81,32 @@ def main():
     works = corpus()
     sidecar = json.loads(SIDECAR.read_text()) if SIDECAR.exists() else {}
 
-    dense = []
+    # Vision undercounts faces in crowded scenes, so density is judged on two
+    # signals: counted figures AND fine-detail energy in the thumbnail (a
+    # Bruegel square scores high on texture even when its faces are 6px).
+    def detail_energy(wid):
+        try:
+            gray = np.asarray(Image.open(IMAGES / f"{wid}.jpg").convert("L")
+                              .resize((128, 128)), dtype=np.float32)
+        except Exception:  # noqa: BLE001
+            return 0.0
+        gy, gx = np.gradient(gray)
+        return float(np.hypot(gx, gy).mean())
+
+    scored = []
     for wid, stored in meta["works"].items():
         if wid.startswith("vig_") or wid not in works:
             continue
         if any(key.startswith(f"vig_{wid}_") for key in sidecar):
             continue
-        figures = stored.get("figures") or []
-        if len(figures) >= min_figures:
-            dense.append((len(figures), wid))
-    dense.sort(reverse=True)
-    dense = dense[:limit]
-    print(f"{len(dense)} dense works to tile (≥{min_figures} figures)")
+        figures = len(stored.get("figures") or [])
+        scored.append((figures, wid))
+    print(f"scoring detail energy for {len(scored)} works…")
+    ranked = sorted(((figures * 4 + detail_energy(wid), wid)
+                     for figures, wid in scored), reverse=True)
+    dense = [(score, wid) for score, wid in ranked[:limit]]
+    print(f"tiling top {len(dense)} dense works "
+          f"(score {dense[-1][0]:.0f}–{dense[0][0]:.0f})")
 
     entries, tiled, skipped = [], 0, 0
     with ThreadPoolExecutor(max_workers=8) as pool:
