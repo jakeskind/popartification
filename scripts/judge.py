@@ -28,6 +28,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from artmatch import match, matched_image, keyword_candidates, IMAGES  # noqa: E402
+from live_search import search_museums  # noqa: E402
 
 
 def anthropic_key():
@@ -105,7 +106,7 @@ def describe_for_search(key, query_path, context):
     return data.get("keywords", []), data.get("archetype", "")
 
 
-def judge(query_path, context="", pool=16, keep=5):
+def judge(query_path, context="", pool=16, keep=5, no_live=False):
     key = anthropic_key()
     if not key:
         raise SystemExit("no ANTHROPIC_API_KEY available")
@@ -119,13 +120,29 @@ def judge(query_path, context="", pool=16, keep=5):
     # Merge in title-matched works the visual pass missed.
     seen = {c[2] for c in visual}
     candidates = list(visual)
-    for wid, work in keyword_candidates(keywords, limit=pool * 2):
+    for wid, work in keyword_candidates(keywords, limit=pool):
         if wid in seen or not (IMAGES / f"{wid}.jpg").exists():
             continue
         seen.add(wid)
         candidates.append((0.0, {"keyword": 1.0}, wid, work, None, "none"))
-    print(f"judging {len(candidates)} candidates "
-          f"({len(visual)} visual + {len(candidates) - len(visual)} by title)")
+    local_count = len(candidates)
+
+    # …and search the live museum APIs, across every object type. The local
+    # index is finite and paintings-only; the web is neither. This is what
+    # finds an Arachne etching for a Spider-Man premiere.
+    if not no_live:
+        for hit in search_museums(keywords, limit=pool):
+            if hit["id"] in seen:
+                continue
+            seen.add(hit["id"])
+            work = {"title": hit["title"], "artist": hit["artist"],
+                    "year": hit["year"], "museum": hit["museum"],
+                    "medium": hit.get("medium", ""),
+                    "image": hit["image"], "hires": hit.get("hires"),
+                    "path": str(hit["path"])}
+            candidates.append((0.0, {"live": 1.0}, hit["id"], work, None, "none"))
+    print(f"judging {len(candidates)} candidates ({len(visual)} visual + "
+          f"{local_count - len(visual)} by title + {len(candidates) - local_count} live)")
 
     # Accumulated editorial rules — every past correction sharpens this call.
     lessons_path = Path(__file__).resolve().parent.parent / "LESSONS.md"
@@ -148,11 +165,15 @@ def judge(query_path, context="", pool=16, keep=5):
         {"type": "text", "text": "THE CANDIDATES (details may be crops of larger works):"},
     ]
     for index, (_, _, wid, work, entry, transform) in enumerate(candidates, start=1):
-        image, kind = matched_image(wid, entry, transform)
+        if work.get("path"):
+            image, kind = Image.open(work["path"]).convert("RGB"), "live"
+        else:
+            image, kind = matched_image(wid, entry, transform)
         line = (f"Candidate {index}: “{work['title']}” — {work['artist'] or 'unknown'}"
                 + (f", {work['year']}" if work["year"] else "")
                 + (f" · {work['museum']}" if work["museum"] else "")
-                + (" (cropped detail)" if kind != "full" else ""))
+                + (f" [{work['medium']}]" if work.get("medium") else "")
+                + (" (cropped detail)" if kind not in ("full", "live") else ""))
         content.append({"type": "text", "text": line})
         content.append(image_block(image))
 
@@ -186,6 +207,10 @@ def judge(query_path, context="", pool=16, keep=5):
         print(f"      {row['why']}")
     winner = candidates[verdict["winner"] - 1]
     print(f"\nWINNER: {winner[3]['title']} — {winner[3]['artist']} ({winner[2]})")
+    if winner[3].get("hires"):
+        print(f"  hi-res: {winner[3]['hires']}")
+    if winner[3].get("medium"):
+        print(f"  medium: {winner[3]['medium']}")
     print(f"CAPTION IDEA: {verdict['caption']}")
     return verdict, candidates
 
@@ -197,4 +222,4 @@ if __name__ == "__main__":
     context = args[args.index("--context") + 1] if "--context" in args else ""
     pool = int(args[args.index("--pool") + 1]) if "--pool" in args else 16
     keep = int(args[args.index("--keep") + 1]) if "--keep" in args else 5
-    judge(args[0], context, pool, keep)
+    judge(args[0], context, pool, keep, no_live="--no-live" in args)
