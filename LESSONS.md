@@ -116,3 +116,5 @@ What won, and which axis carried it.
 - **query** → *Odysseus* (Lovis Corinth). Hypotheses: context(0.3), image(0.25), both(0.2), image(0.15). Matt Damon channels the original brooding plume — Corinth just beat him to the etching press by a century.
 
 - **damon** → *Leonidas at Thermopylae* (Jacques-Louis David). Hypotheses: context(0.3), image(0.25), context(0.2), image(0.15). This is Sparta... I mean Ithaca.
+
+- **obsession** → *Judith I* (Gustav Klimt). Hypotheses: both(0.35), context(0.2), image(0.2), image(0.15). She didn't just survive the night — she got her gold leaf and her glow-up.
