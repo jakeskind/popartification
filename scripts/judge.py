@@ -98,7 +98,9 @@ def judge(query_path, context="", pool=16, keep=5):
         headers={"x-api-key": key, "anthropic-version": "2023-06-01",
                  "content-type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=300) as response:
-        reply = json.load(response)["content"][0]["text"]
+        blocks = json.load(response)["content"]
+        # Reasoning models may lead with a thinking block — take the text one.
+        reply = next(b["text"] for b in blocks if b.get("type") == "text")
 
     reply = reply[reply.index("{"): reply.rindex("}") + 1]
     verdict = json.loads(reply)
