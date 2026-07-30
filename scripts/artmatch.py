@@ -348,6 +348,11 @@ def match(query_path, query_title=None, top=6):
     vectors = np.fromfile(VECS_FILE, dtype=np.float32).reshape(-1, DIM)
     entries = meta["entries"]
 
+    # Re-encode the query as a clean JPEG first — Vision rejects some PNGs
+    # (screenshots with odd color profiles come back "zero-dimensioned").
+    clean_path = Path(tempfile.gettempdir()) / "artmatch_query_clean.jpg"
+    Image.open(query_path).convert("RGB").save(clean_path, "JPEG", quality=92)
+    query_path = str(clean_path)
     query = vision_features([Path(query_path)], quiet=True).get(str(Path(query_path)))
     if not query:
         raise SystemExit("couldn't extract features from the query image")
