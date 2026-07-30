@@ -56,10 +56,28 @@ jobs:
       - name: Compose the pairing
         run: |
           N=${{ github.event.issue.number }}
-          python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg \
-            "/tmp/pairing.jpg" || \
-          python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg \
-            "/tmp/pairing.jpg" --whole
+          # The judge localized the match (boxes + rotation) and the user
+          # approved that exact framing — reproduce it. Fall back to the
+          # face-frame composer only when no boxes were stored.
+          BOXARGS=$(python3 - <<'PYEOF'
+          import json
+          chosen = json.load(open("/tmp/chosen.json"))["chosen"]
+          parts = []
+          if chosen.get("query_box"):
+              parts += ["--query-box", ",".join(str(x) for x in chosen["query_box"])]
+          if chosen.get("art_box"):
+              parts += ["--art-box", ",".join(str(x) for x in chosen["art_box"])]
+          if chosen.get("rotate"):
+              parts += ["--rotate", str(chosen["rotate"])]
+          print(" ".join(parts))
+          PYEOF
+          )
+          if [ -n "$BOXARGS" ]; then
+            python3 scripts/compose_boxes.py /tmp/query.jpg /tmp/art.jpg /tmp/pairing.jpg $BOXARGS
+          else
+            python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg /tmp/pairing.jpg || \
+            python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg /tmp/pairing.jpg --whole
+          fi
           mkdir -p showcase
           cp /tmp/pairing.jpg "showcase/issue-$N.jpg"
           git config user.name "popartification-bot"

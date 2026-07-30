@@ -255,6 +255,43 @@ def record_case(query_label, plan, winner_work, verdict):
     path.write_text(text + entry)
 
 
+ROTATE_OPS = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}
+
+
+def boxed(image, box):
+    """Crop by a [left, top, width, height] fraction box, defensively."""
+    if not box or len(box) != 4:
+        return image
+    w, h = image.size
+    left = min(max(box[0], 0.0), 0.95) * w
+    top = min(max(box[1], 0.0), 0.95) * h
+    width = max(box[2], 0.05) * w
+    height = max(box[3], 0.05) * h
+    return image.crop((int(left), int(top),
+                       int(min(left + width, w)), int(min(top + height, h))))
+
+
+def match_preview(query_image, art_image, row):
+    """Side-by-side of the two images AFTER the judge's zoom/rotation — the
+    user compares the actual match, not the whole canvases."""
+    art = art_image
+    rotate = int(row.get("rotate") or 0) % 360
+    if rotate in ROTATE_OPS:
+        art = art.transpose(ROTATE_OPS[rotate])
+    left = boxed(query_image, row.get("query_box"))
+    right = boxed(art, row.get("art_box"))
+    HEIGHT, GAP = 460, 4
+    tiles = []
+    for tile in (left, right):
+        width = max(1, int(tile.width * HEIGHT / tile.height))
+        tiles.append(tile.resize((width, HEIGHT), Image.LANCZOS))
+    canvas = Image.new("RGB", (tiles[0].width + tiles[1].width + GAP, HEIGHT),
+                       (8, 8, 8))
+    canvas.paste(tiles[0], (0, 0))
+    canvas.paste(tiles[1], (tiles[0].width + GAP, 0))
+    return canvas
+
+
 def used_works():
     """Works already used in a published pairing — the case log is the ledger.
     A feed that keeps reaching for the same Madonna gets boring fast."""
@@ -352,6 +389,9 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
         image_block(Image.open(query_path)),
         {"type": "text", "text": "THE CANDIDATES (details may be crops of larger works):"},
     ]
+    from score import twin_score
+    query_pil = Image.open(query_path).convert("RGB")
+    candidate_images = {}
     for index, (_, _, wid, work, entry, transform) in enumerate(candidates, start=1):
         if work.get("path"):
             image, kind = Image.open(work["path"]).convert("RGB"), "live"
@@ -366,11 +406,17 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
                 continue
         else:
             image, kind = matched_image(wid, entry, transform)
+        candidate_images[index] = image
+        twin = twin_score(query_pil, image)
         line = (f"Candidate {index}: “{work['title']}” — {work['artist'] or 'unknown'}"
                 + (f", {work['year']}" if work["year"] else "")
                 + (f" · {work['museum']}" if work["museum"] else "")
                 + (f" [{work['medium']}]" if work.get("medium") else "")
-                + (" (cropped detail)" if kind not in ("full", "live") else ""))
+                + (" (cropped detail)" if kind not in ("full", "live") else "")
+                + f" | computed-twin {twin['score']}/10"
+                + (f" (suggests {twin['transform']}, {twin['art_crop']} crop)"
+                   if twin["transform"] != "none" or twin["art_crop"] != "full"
+                   else ""))
         content.append({"type": "text", "text": line})
         content.append(image_block(image))
 
@@ -384,9 +430,20 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
         "subject, a Madonna for a pop idol). Be open-minded about ABSTRACT "
         "works — if the shapes and colors echo the photo, that unexpectedness "
         "is a feature, not a bug.\n\n"
+        "A computed-twin score accompanies each candidate: it is style-blind "
+        "structure/palette/light agreement across zooms and rotations — treat it "
+        "as a weak prior only; trust your own eye for pose, gaze and meaning. "
+        "Impressionist and abstract works are first-class: score their visual "
+        "match on shape-echo and palette-echo, never on realism.\n\n"
+        "For every ranked candidate, also LOCALIZE the match — the crop of each "
+        "image that should sit side by side so the twinning is undeniable. "
+        "Boxes are [left, top, width, height] as fractions of the image. "
+        "rotate is degrees counterclockwise applied to the ARTWORK BEFORE its "
+        "box is taken (0 unless a rotation genuinely improves the match).\n\n"
         f"Reply with STRICT JSON only:\n"
         '{"ranking": [{"candidate": <n>, "visual": <0-10>, "concept": <0-10>, '
-        '"why": "<one short sentence>"}, ...], '
+        '"why": "<one short sentence>", '
+        '"query_box": [l, t, w, h], "art_box": [l, t, w, h], "rotate": 0}, ...], '
         '"winner": <n>, "caption": "<one witty line for the post, no hashtags>"}'
         f"\nRank the best {keep}, and the top 3 MUST come from three different art "
         "families or subject types — if several Madonnas (or several of anything) "
@@ -429,17 +486,11 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
             _, _, wid, work, entry, transform = candidates[row["candidate"] - 1]
             thumb = out.with_name(f"{out.stem}_{label}.jpg")
             try:
-                if work.get("path"):
-                    image = Image.open(work["path"]).convert("RGB")
-                elif work.get("url"):
-                    request = urllib.request.Request(
-                        work["url"], headers={"User-Agent": "MuseArtMatch/2.0"})
-                    with urllib.request.urlopen(request, timeout=90) as response:
-                        image = Image.open(io.BytesIO(response.read())).convert("RGB")
-                else:
-                    image, _ = matched_image(wid, entry, transform)
-                image.thumbnail((640, 640))
-                image.save(thumb, "JPEG", quality=88)
+                art = candidate_images.get(row["candidate"])
+                if art is None:
+                    art, _ = matched_image(wid, entry, transform)
+                preview = match_preview(query_pil, art, row)
+                preview.save(thumb, "JPEG", quality=88)
             except Exception:  # noqa: BLE001
                 thumb = None
             options.append({
@@ -448,6 +499,8 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
                 "year": work.get("year", ""), "museum": work.get("museum", ""),
                 "medium": work.get("medium", ""),
                 "hires": work.get("hires") or work.get("image"),
+                "query_box": row.get("query_box"), "art_box": row.get("art_box"),
+                "rotate": row.get("rotate", 0),
                 "visual": row.get("visual"), "concept": row.get("concept"),
                 "why": row.get("why", ""),
                 "thumb": thumb.name if thumb else None,

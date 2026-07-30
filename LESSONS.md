@@ -76,6 +76,13 @@ embedding similarity.
   photo retrieved Madonnas and the system looked stupid. Hardcoded
   gesture→family mappings must be multi-valued and keyed on the RELATIONSHIP,
   or they become blinkers.
+- **The pixel ceiling was re-confirmed by score.py.** A hand-rolled twin
+  score (HOG orientation grid + hue histogram + luminance, over all
+  zoom/rotation combos) ranked Leonidas above the Man with the Golden Helmet
+  for the Damon bust and picked nonsense transforms. It survives only as a
+  weak prior shown to the judge; Claude's eye ranks, and the judge now
+  LOCALIZES every match (crop boxes + rotation) so previews and posts show
+  the exact twinning, not whole canvases.
 - **Keyword retrieval finds obscure text-matches, not masterpieces.** "Odysseus"
   as a keyword returned a bronze mirror and a Zurich hall mural; the canonical
   answers (Man with the Golden Helmet, Leonidas, the Turner Ulysses) only
@@ -107,3 +114,5 @@ What won, and which axis carried it.
 - **taylor** → *The Stolen Kiss* (Jean Honoré Fragonard). Hypotheses: context(0.35), image(0.25), context(0.1), both(0.15). Some things never change: a stolen kiss, a diamond, and a cake big enough for the whole century.
 
 - **query** → *Odysseus* (Lovis Corinth). Hypotheses: context(0.3), image(0.25), both(0.2), image(0.15). Matt Damon channels the original brooding plume — Corinth just beat him to the etching press by a century.
+
+- **damon** → *Leonidas at Thermopylae* (Jacques-Louis David). Hypotheses: context(0.3), image(0.25), context(0.2), image(0.15). This is Sparta... I mean Ithaca.
