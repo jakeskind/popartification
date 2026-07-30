@@ -66,22 +66,43 @@ def claude(key, payload):
         return texts[-1]
 
 
+ARCHETYPES = """
+arms outstretched (cruciform) -> saints, Christ, martyrdom, ascension
+tender head-cradle, eyes closed -> Madonna and Child, Pieta, deposition
+standing authority, arms crossed -> Napoleon, state portraits
+isolated kneeling figure in a crowd -> Christ before Pilate, martyrdom
+one arm raised high -> Icarus, allegory, judgement
+leg kicked high -> dancers, bacchanal
+bodies tangled in a melee -> brawls, battles
+bent double with a tool -> harvest, reapers, mowers
+two figures walking, tall and small -> processions, expressionist pairs
+pure geometry or texture -> abstraction, pointillism, mosaic, roundel
+"""
+
+
 def describe_for_search(key, query_path, context):
-    """Ask Claude what an art historian would search for — the keywords become
-    a title-based retrieval pass alongside the visual one."""
-    reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 300,
+    """Ask Claude to do what a human curator does: name the gesture archetype,
+    then name the words a painting of that gesture would be TITLED with. The
+    keywords drive a title-based retrieval pass alongside the visual one."""
+    reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 400,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text":
-                f"Pop-culture context: {context or 'unknown'}.\nLooking at this photo, "
-                "list the words most likely to appear in the TITLE of a painting "
-                "depicting the same scene, action, or subject (e.g. a golfer "
-                "swinging in tall grass → harvest, reaper, scythe, wheat, field, "
-                "mower, gleaner). Reply as JSON only: "
-                '{"keywords": ["...", "..."]}'},
+                f"Pop-culture context: {context or 'unknown'}.\n\n"
+                f"Common gesture archetypes and the art families that hold them:{ARCHETYPES}\n"
+                "Looking at this photo: (1) which archetype fits (or describe a "
+                "better one), and (2) list the words most likely to appear in the "
+                "TITLE of an artwork depicting the same gesture, scene, or subject "
+                "— include religious, mythological and allegorical vocabulary, and "
+                "if the image is mostly pattern or motion, include abstract terms "
+                "(composition, circles, spiral, rhythm). Reply as JSON only: "
+                '{"archetype": "...", "keywords": ["...", "..."]}'},
             image_block(Image.open(query_path)),
         ]}]})
     reply = reply[reply.index("{"): reply.rindex("}") + 1]
-    return json.loads(reply).get("keywords", [])
+    data = json.loads(reply)
+    if data.get("archetype"):
+        print(f"archetype: {data['archetype']}")
+    return data.get("keywords", []), data.get("archetype", "")
 
 
 def judge(query_path, context="", pool=16, keep=5):
@@ -90,8 +111,10 @@ def judge(query_path, context="", pool=16, keep=5):
         raise SystemExit("no ANTHROPIC_API_KEY available")
 
     visual = match(query_path, top=pool)
-    keywords = describe_for_search(key, query_path, context)
+    keywords, archetype = describe_for_search(key, query_path, context)
     print(f"search keywords: {', '.join(keywords)}")
+    if archetype:
+        context = f"{context} | gesture archetype: {archetype}"
 
     # Merge in title-matched works the visual pass missed.
     seen = {c[2] for c in visual}
