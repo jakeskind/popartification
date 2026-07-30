@@ -456,7 +456,70 @@ def _wikidata_action(keyword, per_keyword):
 # Commons' subject categories are full of book scans. The working substitute
 # for "find works showing this action" is canonical-name lookup
 # (_wikidata_named) fed by the strategy stage's CANON route.
-SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata, _wikidata_named)
+
+# ── Statens Museum for Kunst, Denmark (keyless, CC0) ──────────────────────
+
+SMK_SEARCH = "https://api.smk.dk/api/v1/art/search"
+
+
+def _smk(keyword, per_keyword):
+    found = []
+    data = _json(SMK_SEARCH + "?" + urllib.parse.urlencode(
+        {"keys": keyword, "rows": per_keyword * 3, "filters": "[has_image:true]"}))
+    for item in (data or {}).get("items") or []:
+        if len(found) >= per_keyword:
+            break
+        thumb = item.get("image_thumbnail")
+        if not thumb or not item.get("has_image"):
+            continue
+        titles = item.get("titles") or [{}]
+        production = (item.get("production") or [{}])[0]
+        date = (item.get("production_date") or [{}])[0]
+        found.append({
+            "id": f"smk_{item.get('object_number', item.get('id', ''))}",
+            "title": titles[0].get("title") or "Untitled",
+            "artist": production.get("creator") or "",
+            "year": (date.get("period") or "")[:24],
+            "museum": "SMK — National Gallery of Denmark",
+            "medium": ", ".join(item.get("techniques") or [])[:40],
+            "image": thumb,
+            "hires": item.get("image_native") or thumb,
+        })
+    return found
+
+
+# ── Wellcome Collection (keyless; medicine, anatomy, the body) ────────────
+# The corpus where blood, wounds and bandaged faces actually exist in art.
+
+WELLCOME_IMAGES = "https://api.wellcomecollection.org/catalogue/v2/images"
+
+
+def _wellcome(keyword, per_keyword):
+    found = []
+    data = _json(WELLCOME_IMAGES + "?" + urllib.parse.urlencode(
+        {"query": keyword, "pageSize": per_keyword * 2}))
+    for result in (data or {}).get("results") or []:
+        if len(found) >= per_keyword:
+            break
+        info = (result.get("thumbnail") or {}).get("url", "")
+        if not info:
+            continue
+        base = info.replace("/info.json", "")
+        found.append({
+            "id": f"wellcome_{result.get('id', '')}",
+            "title": (result.get("source") or {}).get("title", "Untitled")[:90],
+            "artist": "",
+            "year": "",
+            "museum": "Wellcome Collection",
+            "medium": "",
+            "image": base + "/full/600,/0/default.jpg",
+            "hires": base + "/full/1400,/0/default.jpg",
+        })
+    return found
+
+
+SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata,
+           _wikidata_named, _smk, _wellcome)
 
 
 def search_museums(keywords, limit=12, per_keyword=3):
