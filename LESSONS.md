@@ -123,3 +123,7 @@ What won, and which axis carried it.
 - **obsession** → *Judith I* (Gustav Klimt). Hypotheses: both(0.35), context(0.2), image(0.2), image(0.15). She didn't just survive the night — she got her gold leaf and her glow-up.
 
 - **obsession (girl, bloodied grin)** → *Man of Sorrows* (Aelbrecht Bouts, Fogg). Anomaly route won: blood streaming down the face, found via its home genre (Passion imagery) after archetype/visual routes missed 3 rounds. The emotional INVERSION (her glee vs his sorrow, same blood) carried the pairing — a perfect mirror was not required.
+
+- **creature** → *Theseus and the Minotaur* (Canova, Antonio). Hypotheses: image(0.3), image(0.2), context(0.2), context(0.2). Half man, half bull, all HR violation — Theseus never had to deal with a glass door.
+
+- **creature (black minotaur robot behind office door)** → *The Unexpected Answer* (Magritte, 1933). The shared anomaly was the DOOR itself — a dark creature-silhouette filling a doorway in a blank wall. Pipeline reached the Minotaur myth + a Newman abstract on its own; the Magritte came from asking 'what famous artwork is about this exact situation?' Titles that read like a caption for the photo ('The Unexpected Answer') are gold.
