@@ -259,7 +259,7 @@ def used_works():
             for title in re.findall(r"\*([^*]+)\*", log)}
 
 
-def judge(query_path, context="", pool=16, keep=5, no_live=False):
+def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None):
     key = anthropic_key()
     if not key:
         raise SystemExit("no ANTHROPIC_API_KEY available")
@@ -271,7 +271,11 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
     if plan.get("read"):
         context = f"{context} | read: {plan['read']}"
 
-    visual = match(query_path, top=pool)
+    try:
+        visual = match(query_path, top=pool)
+    except Exception as error:  # noqa: BLE001 - no local index (cloud run)
+        print(f"(no local index — live search only: {error})")
+        visual = []
     keywords, archetype = describe_for_search(key, query_path, context)
     # Every hypothesis contributes its own search vocabulary.
     for h in hypotheses:
@@ -282,11 +286,14 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
     # Merge in title-matched works the visual pass missed.
     seen = {c[2] for c in visual}
     candidates = list(visual)
-    for wid, work in keyword_candidates(keywords, limit=pool):
-        if wid in seen or not (IMAGES / f"{wid}.jpg").exists():
-            continue
-        seen.add(wid)
-        candidates.append((0.0, {"keyword": 1.0}, wid, work, None, "none"))
+    try:
+        for wid, work in keyword_candidates(keywords, limit=pool):
+            if wid in seen or not (IMAGES / f"{wid}.jpg").exists():
+                continue
+            seen.add(wid)
+            candidates.append((0.0, {"keyword": 1.0}, wid, work, None, "none"))
+    except Exception:  # noqa: BLE001 - no local corpus
+        pass
     local_count = len(candidates)
 
     # …and search the live museum APIs, across every object type. The local
@@ -384,6 +391,37 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
         record_case(Path(query_path).stem, plan, winner[3], verdict)
     except Exception:  # noqa: BLE001 - logging must never break a run
         pass
+
+    if json_out:
+        out = Path(json_out)
+        options = []
+        for label, row in zip("ABCDE", verdict["ranking"]):
+            _, _, wid, work, entry, transform = candidates[row["candidate"] - 1]
+            thumb = out.with_name(f"{out.stem}_{label}.jpg")
+            try:
+                if work.get("path"):
+                    image = Image.open(work["path"]).convert("RGB")
+                else:
+                    image, _ = matched_image(wid, entry, transform)
+                image.thumbnail((640, 640))
+                image.save(thumb, "JPEG", quality=88)
+            except Exception:  # noqa: BLE001
+                thumb = None
+            options.append({
+                "label": label, "wid": wid,
+                "title": work.get("title", ""), "artist": work.get("artist", ""),
+                "year": work.get("year", ""), "museum": work.get("museum", ""),
+                "medium": work.get("medium", ""),
+                "hires": work.get("hires") or work.get("image"),
+                "visual": row.get("visual"), "concept": row.get("concept"),
+                "why": row.get("why", ""),
+                "thumb": thumb.name if thumb else None,
+                "winner": row["candidate"] == verdict.get("winner"),
+            })
+        out.write_text(json.dumps(
+            {"read": plan.get("read", ""), "caption": verdict.get("caption", ""),
+             "options": options}, indent=2))
+        print(f"wrote {out}")
     return verdict, candidates
 
 
@@ -394,4 +432,6 @@ if __name__ == "__main__":
     context = args[args.index("--context") + 1] if "--context" in args else ""
     pool = int(args[args.index("--pool") + 1]) if "--pool" in args else 16
     keep = int(args[args.index("--keep") + 1]) if "--keep" in args else 5
-    judge(args[0], context, pool, keep, no_live="--no-live" in args)
+    json_out = args[args.index("--json") + 1] if "--json" in args else None
+    judge(args[0], context, pool, keep, no_live="--no-live" in args,
+          json_out=json_out)

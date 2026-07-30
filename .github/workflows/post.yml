@@ -1,0 +1,108 @@
+name: "Post: publish a chosen pairing"
+
+# Second half of the mobile flow: on an issue where pair.yml offered options,
+# reply "post A" (any of A-E; bare "post" means the starred winner). Hashtag
+# words in the same comment are added to the caption. Runs on macOS so the
+# Vision face-framing in compose_pairing works.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  post:
+    if: >
+      !github.event.issue.pull_request &&
+      (github.event.comment.user.login == github.repository_owner ||
+       github.event.comment.user.login == 'peppertheapp') &&
+      startsWith(github.event.comment.body, 'post')
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pillow
+        run: python3 -m pip install --user --quiet --break-system-packages pillow numpy
+
+      - name: Pick the option and fetch images
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          N=${{ github.event.issue.number }}
+          python3 - "$N" <<'EOF'
+          import json, os, re, sys, urllib.request
+          n = sys.argv[1]
+          comment = os.environ.get("COMMENT", "")
+          data = json.load(open(f"results/issue-{n}.json"))
+          match = re.search(r"\bpost\s+([A-Ea-e])\b", comment)
+          label = match.group(1).upper() if match else None
+          chosen = next((o for o in data["options"] if o["label"] == label), None) \
+              if label else next((o for o in data["options"] if o.get("winner")),
+                                 data["options"][0])
+          tags = " ".join(re.findall(r"#(\w+)", comment))
+          request = urllib.request.Request(
+              chosen["hires"], headers={"User-Agent": "MuseArtMatch/2.0"})
+          with urllib.request.urlopen(request, timeout=300) as response:
+              open("/tmp/art.jpg", "wb").write(response.read())
+          json.dump({"chosen": chosen, "tags": tags}, open("/tmp/chosen.json", "w"))
+          print("posting option", chosen["label"], "—", chosen["title"])
+          EOF
+          cp "results/issue-$N-query.jpg" /tmp/query.jpg
+
+      - name: Compose the pairing
+        run: |
+          N=${{ github.event.issue.number }}
+          python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg \
+            "/tmp/pairing.jpg" || \
+          python3 scripts/compose_pairing.py /tmp/query.jpg /tmp/art.jpg \
+            "/tmp/pairing.jpg" --whole
+          mkdir -p showcase
+          cp /tmp/pairing.jpg "showcase/issue-$N.jpg"
+          git config user.name "popartification-bot"
+          git config user.email "actions@github.com"
+          git add showcase && git commit -m "Pairing for #$N" && git pull --rebase && git push
+          sleep 8   # let the raw URL go live
+
+      - name: Post to Instagram
+        env:
+          POPARTIFICATION_IG_TOKEN: ${{ secrets.POPARTIFICATION_IG_TOKEN }}
+        run: |
+          N=${{ github.event.issue.number }}
+          ARGS=$(python3 - <<'EOF'
+          import json, shlex
+          data = json.load(open("/tmp/chosen.json"))
+          chosen, tags = data["chosen"], data["tags"]
+          parts = []
+          for flag, key in (("--title", "title"), ("--artist", "artist"),
+                            ("--medium", "medium"), ("--year", "year"),
+                            ("--museum", "museum")):
+              if chosen.get(key):
+                  parts += [flag, chosen[key]]
+          if tags:
+              parts += ["--tags", tags]
+          print(" ".join(shlex.quote(p) for p in parts))
+          EOF
+          )
+          URL="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/showcase/issue-$N.jpg"
+          eval python3 scripts/post_pairing.py "$URL" $ARGS | tee /tmp/post.log
+
+      - name: Confirm and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          N=${{ github.event.issue.number }}
+          RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/showcase/issue-$N.jpg"
+          {
+            echo "Published ✅"
+            echo
+            echo "![pairing]($RAW)"
+            echo
+            echo '```'
+            tail -20 /tmp/post.log
+            echo '```'
+          } > /tmp/done.md
+          gh issue comment "$N" --repo "$GITHUB_REPOSITORY" --body-file /tmp/done.md
+          gh issue close "$N" --repo "$GITHUB_REPOSITORY"

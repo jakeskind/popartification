@@ -1,0 +1,103 @@
+name: "Pair: photo in, options back"
+
+# The mobile inbox. Open an issue from the GitHub app with a photo pasted in
+# — the pipeline (strategy -> live museum search -> Claude judge) replies on
+# the issue with lettered options. Answer "post A" and post.yml publishes it.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  pair:
+    # Owner-only: this is a public repo and the workflow spends API tokens.
+    if: >
+      !github.event.issue.pull_request &&
+      (github.event.issue.user.login == github.repository_owner ||
+       github.event.issue.user.login == 'peppertheapp')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: python3 -m pip install --quiet pillow numpy
+
+      - name: Extract the photo from the issue
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          body = os.environ.get("BODY", "")
+          match = (re.search(r'!\[[^\]]*\]\((https?://[^)\s]+)\)', body)
+                   or re.search(r'src="(https?://[^"]+)"', body)
+                   or re.search(r'(https?://\S+\.(?:jpg|jpeg|png|webp)\S*)', body, re.I))
+          if not match:
+              print("::error::No image found — paste or attach a photo in the issue body.")
+              sys.exit(1)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"QUERY_IMAGE_URL={match.group(1)}\n")
+          EOF
+
+      - name: Download the photo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sL -H "Authorization: token $GH_TOKEN" "$QUERY_IMAGE_URL" -o /tmp/query_raw
+          python3 - <<'EOF'
+          from PIL import Image
+          image = Image.open("/tmp/query_raw").convert("RGB")
+          image.save("/tmp/query.jpg", "JPEG", quality=92)
+          print("query:", image.size)
+          EOF
+
+      - name: Judge (live museum search, no local index)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p /tmp/out
+          python3 scripts/judge.py /tmp/query.jpg \
+            --context "${{ github.event.issue.title }}" \
+            --pool 10 --keep 5 --json /tmp/out/result.json | tee /tmp/judge.log
+
+      - name: Commit results (thumbs + verdict + case log)
+        run: |
+          N=${{ github.event.issue.number }}
+          mkdir -p results
+          cp /tmp/query.jpg "results/issue-$N-query.jpg"
+          for f in /tmp/out/result_*.jpg; do
+            [ -e "$f" ] && cp "$f" "results/issue-$N-$(basename "$f" | sed 's/result_//')"
+          done
+          cp /tmp/out/result.json "results/issue-$N.json"
+          git config user.name "popartification-bot"
+          git config user.email "actions@github.com"
+          git add results LESSONS.md
+          git commit -m "Options for #$N" && git pull --rebase && git push
+
+      - name: Reply with the options
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          N=${{ github.event.issue.number }}
+          RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/results"
+          python3 - "$N" "$RAW" <<'EOF' > /tmp/comment.md
+          import json, sys
+          n, raw = sys.argv[1], sys.argv[2]
+          data = json.load(open("/tmp/out/result.json"))
+          print(f"**Read:** {data['read']}\n")
+          for o in data["options"]:
+              star = " ⭐" if o.get("winner") else ""
+              print(f"### {o['label']}{star} — {o['title']}")
+              meta = " · ".join(filter(None, [o['artist'], o['year'], o['museum']]))
+              print(meta)
+              print(f"_{o['why']}_ (visual {o['visual']} / concept {o['concept']})\n")
+              if o.get("thumb"):
+                  print(f"![{o['label']}]({raw}/issue-{n}-{o['thumb'].replace('result_','')})\n")
+          print(f"\n---\nReply **`post A`** (or B–E) to publish. "
+                f"Add hashtags in the same comment to include them.")
+          EOF
+          gh issue comment "$N" --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md

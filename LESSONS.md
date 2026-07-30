@@ -98,3 +98,5 @@ embedding similarity.
 What won, and which axis carried it.
 
 - **taylor** → *Virgin and Child* (Mino da Fiesole (Mino di Giovanni)). Hypotheses: image(0.35), context(0.3), both(0.25), image(0.1). Forget the ring — it's the Pietà pose that sealed the engagement.
+
+- **taylor** → *The Stolen Kiss* (Jean Honoré Fragonard). Hypotheses: context(0.35), image(0.25), context(0.1), both(0.15). Some things never change: a stolen kiss, a diamond, and a cake big enough for the whole century.
