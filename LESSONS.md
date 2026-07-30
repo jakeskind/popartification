@@ -61,6 +61,14 @@ embedding similarity.
    mother-and-child; it must never stand in for lovers. Check that the
    *relationship* depicted rhymes with the photo's.
 
+18. **Dense paintings are anthologies — match the vignette, not the frame.**
+   Bosch and Bruegel painted hundreds of scenes per canvas; any one of them can
+   be the comp. The index now carries overlapping vignette tiles of the great
+   anthology works as first-class candidates ("… (detail)"), and the strategy
+   stage asks which anthology painting would contain the moment as a background
+   scene. A pairing that uses 3% of a canvas is not a compromise — it is the
+   genre's signature move.
+
 ## Architectural lessons
 
 - **Pixel statistics have a ceiling.** Hand-tuned colour/pose features are good
