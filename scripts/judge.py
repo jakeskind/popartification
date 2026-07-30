@@ -27,7 +27,7 @@ from pathlib import Path
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from artmatch import match, matched_image  # noqa: E402
+from artmatch import match, matched_image, keyword_candidates, IMAGES  # noqa: E402
 
 
 def anthropic_key():
@@ -53,12 +53,56 @@ def image_block(image, max_side=420):
                                         "data": base64.b64encode(buffer.getvalue()).decode()}}
 
 
+def claude(key, payload):
+    request = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=json.dumps(payload).encode(),
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                 "content-type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=300) as response:
+        blocks = json.load(response)["content"]
+        texts = [b["text"] for b in blocks if b.get("type") == "text"]
+        if not texts:
+            raise SystemExit("judge returned no text (token budget exhausted?)")
+        return texts[-1]
+
+
+def describe_for_search(key, query_path, context):
+    """Ask Claude what an art historian would search for — the keywords become
+    a title-based retrieval pass alongside the visual one."""
+    reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 300,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text":
+                f"Pop-culture context: {context or 'unknown'}.\nLooking at this photo, "
+                "list the words most likely to appear in the TITLE of a painting "
+                "depicting the same scene, action, or subject (e.g. a golfer "
+                "swinging in tall grass → harvest, reaper, scythe, wheat, field, "
+                "mower, gleaner). Reply as JSON only: "
+                '{"keywords": ["...", "..."]}'},
+            image_block(Image.open(query_path)),
+        ]}]})
+    reply = reply[reply.index("{"): reply.rindex("}") + 1]
+    return json.loads(reply).get("keywords", [])
+
+
 def judge(query_path, context="", pool=16, keep=5):
     key = anthropic_key()
     if not key:
         raise SystemExit("no ANTHROPIC_API_KEY available")
 
-    candidates = match(query_path, top=pool)
+    visual = match(query_path, top=pool)
+    keywords = describe_for_search(key, query_path, context)
+    print(f"search keywords: {', '.join(keywords)}")
+
+    # Merge in title-matched works the visual pass missed.
+    seen = {c[2] for c in visual}
+    candidates = list(visual)
+    for wid, work in keyword_candidates(keywords, limit=pool):
+        if wid in seen or not (IMAGES / f"{wid}.jpg").exists():
+            continue
+        seen.add(wid)
+        candidates.append((0.0, {"keyword": 1.0}, wid, work, None, "none"))
+    print(f"judging {len(candidates)} candidates "
+          f"({len(visual)} visual + {len(candidates) - len(visual)} by title)")
 
     content = [
         {"type": "text", "text":
@@ -94,17 +138,8 @@ def judge(query_path, context="", pool=16, keep=5):
         '"winner": <n>, "caption": "<one witty line for the post, no hashtags>"}'
         f"\nRank the best {keep}, weighting visual 60 / concept 40."})
 
-    payload = {"model": "claude-sonnet-5", "max_tokens": 900,
-               "messages": [{"role": "user", "content": content}]}
-    request = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=json.dumps(payload).encode(),
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=300) as response:
-        blocks = json.load(response)["content"]
-        # Reasoning models may lead with a thinking block — take the text one.
-        reply = next(b["text"] for b in blocks if b.get("type") == "text")
-
+    reply = claude(key, {"model": "claude-sonnet-5", "max_tokens": 4000,
+                         "messages": [{"role": "user", "content": content}]})
     reply = reply[reply.index("{"): reply.rindex("}") + 1]
     verdict = json.loads(reply)
 

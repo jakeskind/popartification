@@ -166,15 +166,34 @@ def vision_features(paths, quiet=False):
 
 
 def color_features(path):
+    """Exposure-invariant color signature. A photo of a golden field and a
+    painting of one differ wildly in RGB brightness but agree on HUE, so the
+    palette is described in HSV: a saturation-weighted hue histogram plus a
+    coarse hue/saturation grid. (Naive RGB bins put a bright gold and a dark
+    gold in different buckets and scored them as unrelated.)"""
     image = Image.open(path).convert("RGB").resize((128, 128))
-    histogram = [0] * 64
-    pixels = list(image.getdata())
-    for r, g, b in pixels:
-        histogram[(r // 64) * 16 + (g // 64) * 4 + (b // 64)] += 1
-    total = len(pixels)
-    grid_image = image.resize((4, 4))
-    return {"hist": [h / total for h in histogram],
-            "grid": [c / 255 for p in grid_image.getdata() for c in p]}
+    hsv = image.convert("HSV")
+    pixels = list(hsv.getdata())
+
+    HUE_BINS = 18
+    hue_hist = [0.0] * (HUE_BINS + 1)   # last bin = achromatic
+    for h, s, v in pixels:
+        if s < 40 or v < 25:
+            hue_hist[HUE_BINS] += 1
+        else:
+            hue_hist[int(h / 256 * HUE_BINS) % HUE_BINS] += s / 255
+    total = sum(hue_hist) or 1
+    hue_hist = [h / total for h in hue_hist]
+
+    # 4x4 spatial grid of (hue as unit vector, saturation) — brightness left
+    # out so exposure can't move it.
+    grid_hsv = hsv.resize((4, 4))
+    grid = []
+    for h, s, v in grid_hsv.getdata():
+        angle = h / 256 * 2 * math.pi
+        weight = s / 255
+        grid += [math.cos(angle) * weight, math.sin(angle) * weight, weight]
+    return {"hist": hue_hist, "grid": grid}
 
 
 def face_crop_box(figure, image_size):
@@ -205,6 +224,26 @@ def load_meta():
     if META_FILE.exists():
         return json.loads(META_FILE.read_text())
     return {"dim": DIM, "works": {}, "entries": []}
+
+
+def recolor_index():
+    """Recompute color features for every indexed work (cheap, PIL-only) —
+    used after the color signature changes."""
+    meta = load_meta()
+    updated = 0
+    for wid in list(meta["works"]):
+        path = IMAGES / f"{wid}.jpg"
+        if not path.exists():
+            continue
+        try:
+            meta["works"][wid].update(color_features(path))
+            updated += 1
+        except Exception:  # noqa: BLE001
+            continue
+        if updated % 2000 == 0:
+            print(f"  recolored {updated}")
+    META_FILE.write_text(json.dumps(meta))
+    print(f"recolored {updated} works")
 
 
 def build_index():
@@ -330,10 +369,14 @@ def body_pose_score(query_poses, candidate_poses):
 
 
 def color_score(query, work):
+    """Palette agreement: hue-histogram intersection plus spatial hue layout.
+    Tolerant of legacy indexes built with the old RGB features."""
+    if len(query["hist"]) != len(work["hist"]) or len(query["grid"]) != len(work["grid"]):
+        return 0.4   # stale entry — neutral rather than misleading
     intersection = sum(min(a, b) for a, b in zip(query["hist"], work["hist"]))
     grid_distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(query["grid"], work["grid"]))
                               / len(query["grid"]))
-    return 0.5 * intersection + 0.5 * max(0, 1 - grid_distance * 2)
+    return 0.6 * intersection + 0.4 * max(0, 1 - grid_distance * 1.6)
 
 
 def title_score(query_title, candidate_title):
@@ -341,6 +384,36 @@ def title_score(query_title, candidate_title):
     ratio = difflib.SequenceMatcher(None, a, b).ratio()
     ta, tb = set(a.split()), set(b.split())
     return max(ratio, len(ta & tb) / len(ta | tb) if ta | tb else 0)
+
+
+def keyword_candidates(keywords, limit=40):
+    """Works whose TITLE echoes a set of concept keywords — the art-historian
+    route ("man swinging a blade in tall grass" → harvest paintings). Visual
+    embeddings alone can't find these; titles can."""
+    works = corpus()
+    wanted = {k.lower().strip() for k in keywords if len(k.strip()) > 2}
+    scored = []
+    for wid, work in works.items():
+        title_words = {w.strip(".,()'\"").lower() for w in work["title"].split()}
+        hits = 0
+        for k in wanted:
+            # Exact word match, or a substantial stem overlap. Short words are
+            # matched exactly only — otherwise "a" matches inside "harvest" and
+            # every two-word title scores.
+            if k in title_words or any(
+                    len(w) >= 4 and len(k) >= 4 and (w.startswith(k[:4]) or k.startswith(w[:4]))
+                    for w in title_words):
+                hits += 1
+        if hits:
+            # Rank by hit count; shorter titles break ties (more on-the-nose).
+            scored.append((hits, -len(title_words), wid, work))
+    scored.sort(reverse=True, key=lambda r: (r[0], r[1]))
+    return [(wid, work) for _, _, wid, work in scored[:limit]]
+
+
+def _unused_keyword_tail():
+    scored = []
+    return [(wid, work) for _, wid, work in scored[:limit]]
 
 
 def match(query_path, query_title=None, top=6):
@@ -456,7 +529,7 @@ def match(query_path, query_title=None, top=6):
         # aren't excluded.
         weights = {"face": 0.55, "region": 0.27, "color": 0.10, "figures": 0.08}
     else:
-        weights = {"region": 0.42, "body": 0.15, "color": 0.28, "figures": 0.15}
+        weights = {"region": 0.38, "body": 0.14, "color": 0.36, "figures": 0.12}
     if grayscale and "color" in weights:
         weights["face" if face_mode else "region"] += weights["color"]
         weights["color"] = 0
@@ -568,6 +641,9 @@ def contact_sheet(query_path, matches, out_path):
 
 def main():
     args = sys.argv[1:]
+    if "--recolor" in args:
+        recolor_index()
+        return
     if "--build" in args:
         build_index()
         return
