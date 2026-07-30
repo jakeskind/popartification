@@ -1,0 +1,81 @@
+{
+  "read": "Matt Damon as Odysseus in plumed Greek helmet and cloak leading troops through a forest backdrop \u2014 this wants the canonical image of the mythic warrior-king/hero of Troy, not just a generic soldier.",
+  "caption": "Matt Damon channels the original brooding plume \u2014 Corinth just beat him to the etching press by a century.",
+  "options": [
+    {
+      "label": "A",
+      "wid": "vam_O1037720",
+      "title": "Odysseus",
+      "artist": "Lovis Corinth",
+      "year": "1919",
+      "museum": "Victoria and Albert Museum",
+      "medium": "Print",
+      "hires": "https://framemark.vam.ac.uk/collections/2011EV6855/full/1400,/0/default.jpg",
+      "visual": 8,
+      "concept": 10,
+      "why": "Corinth's etching is literally titled 'Odysseus' and shows a plumed helm leading armed men in murky, chaotic terrain.",
+      "thumb": "result_A.jpg",
+      "winner": true
+    },
+    {
+      "label": "B",
+      "wid": "commons_Ajax_and_Odysseus_Lochmann_Hall_Landesmuseum_Zurich",
+      "title": "Ajax and Odysseus - Lochmann Hall, Landesmuseum Zurich",
+      "artist": "historia",
+      "year": "2024-05-11",
+      "museum": "Self-photographed",
+      "medium": "",
+      "hires": "https://upload.wikimedia.org/wikipedia/commons/7/79/Ajax_and_Odysseus_-_Lochmann_Hall%2C_Landesmuseum_Zurich.jpg",
+      "visual": 6,
+      "concept": 9,
+      "why": "A mural explicitly depicting Ajax and Odysseus with troops massed behind them nails the Trojan-hero-and-army iconography.",
+      "thumb": "result_B.jpg",
+      "winner": false
+    },
+    {
+      "label": "C",
+      "wid": "cma_156420",
+      "title": "Hermes Ordering Calypso to Release Odysseus",
+      "artist": "Gerard de Lairesse",
+      "year": "c. 1670",
+      "museum": "Cleveland Museum of Art",
+      "medium": "oil on canvas",
+      "hires": "https://openaccess-cdn.clevelandart.org/1992.2/1992.2_print.jpg",
+      "visual": 5,
+      "concept": 7,
+      "why": "Lairesse's canonical Odysseus narrative gives the armored, cloaked hero figure even though the scene shifts to Calypso's isle.",
+      "thumb": "result_C.jpg",
+      "winner": false
+    },
+    {
+      "label": "D",
+      "wid": "met_248154",
+      "title": "Bronze mirror",
+      "artist": "",
+      "year": "ca. 350\u2013300 BCE",
+      "museum": "The Metropolitan Museum of Art",
+      "medium": "Bronze",
+      "hires": "https://images.metmuseum.org/CRDImages/gr/original/DP254621.jpg",
+      "visual": 4,
+      "concept": 5,
+      "why": "An ancient Greek bronze mirror engraved with warrior figures nods to the ur-source imagery of Homeric heroes, in a purely graphic, antique register.",
+      "thumb": "result_D.jpg",
+      "winner": false
+    },
+    {
+      "label": "E",
+      "wid": "vam_O944202",
+      "title": "Odysseus receiving a bag of winds from Aeolus",
+      "artist": "Gaetano Gandolfi",
+      "year": "c.1766",
+      "museum": "Victoria and Albert Museum",
+      "medium": "Drawing",
+      "hires": "https://framemark.vam.ac.uk/collections/2016JK5865/full/1400,/0/default.jpg",
+      "visual": 3,
+      "concept": 6,
+      "why": "Gandolfi's swirling sketch of Odysseus receiving the winds keeps the mythic voyage theme alive, if visually loose.",
+      "thumb": "result_E.jpg",
+      "winner": false
+    }
+  ]
+}
