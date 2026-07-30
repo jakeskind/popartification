@@ -445,7 +445,11 @@ def match(query_path, query_title=None, top=6):
     # face axis surfaces downcast Madonnas; the old 50/25 blend surfaced
     # grayscale lockets.
     if face_mode:
-        weights = {"face": 0.72, "region": 0.13, "color": 0.08, "figures": 0.07}
+        # Face-to-face is the strongest signal for close-ups, but never the
+        # ONLY one: whole-image/region shape similarity keeps real weight so an
+        # abstract whose forms echo the photo can still win, and faceless works
+        # aren't excluded.
+        weights = {"face": 0.55, "region": 0.27, "color": 0.10, "figures": 0.08}
     else:
         weights = {"region": 0.42, "body": 0.15, "color": 0.28, "figures": 0.15}
     if grayscale and "color" in weights:
@@ -474,7 +478,11 @@ def match(query_path, query_title=None, top=6):
         parts["region"] = max(0, region_score)
         entry_index = region_index
         if face_mode:
-            face_score, face_index = best_face.get(wid, (0.15, None))
+            # No detected face (abstracts, landscapes, sculpture fragments):
+            # fall back to the work's own shape similarity rather than a flat
+            # penalty, so it competes on form and color.
+            fallback = 0.82 * max(0, region_score)
+            face_score, face_index = best_face.get(wid, (fallback, None))
             parts["face"] = face_score
             if face_index is not None and face_score >= region_score:
                 entry_index = face_index
