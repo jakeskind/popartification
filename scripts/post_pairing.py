@@ -101,6 +101,24 @@ def main():
             args[flag] = argv[argv.index(f"--{flag}") + 1]
     caption = build_caption(args)
     print("──── caption ────\n" + caption + "\n─────────────────")
+
+    # Never publish stale CDN bytes: if --verify-file is given, the public URL
+    # must serve EXACTLY that file before we hand it to Instagram. Reusing a
+    # filename after an edit means raw.githubusercontent can serve the old
+    # cached image for minutes — long enough to repost the mistake.
+    if "--verify-file" in sys.argv:
+        import hashlib, time, urllib.request
+        expected = hashlib.md5(
+            open(sys.argv[sys.argv.index("--verify-file") + 1], "rb").read()).hexdigest()
+        for attempt in range(10):
+            remote = urllib.request.urlopen(image_url, timeout=60).read()
+            if hashlib.md5(remote).hexdigest() == expected:
+                print("verified: URL serves the intended bytes")
+                break
+            print(f"URL still serving stale bytes (attempt {attempt + 1}) — waiting…")
+            time.sleep(30)
+        else:
+            raise SystemExit("URL never served the intended file — not posting.")
     if "--dry-run" in argv:
         print("(dry run — not posting)")
         return
