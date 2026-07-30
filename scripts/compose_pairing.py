@@ -82,16 +82,17 @@ def center_crop(image, aspect):
     return image.crop((int(left), int(top), int(left + cw), int(top + ch)))
 
 
-def compose(query_path, art_path, out_path, stack=False):
+def compose(query_path, art_path, out_path, stack=False, whole=False):
     query = Image.open(query_path).convert("RGB")
     art = Image.open(art_path).convert("RGB")
-    query_face = dominant_face(query_path)
-    art_face = dominant_face(art_path)
+    query_face = dominant_face(query_path) if not whole else None
+    art_face = dominant_face(art_path) if not whole else None
     faces = bool(query_face and art_face)
     if not faces:
-        # Scene pairings (figures seen from behind, abstracts, landscapes):
-        # frame both on the whole composition instead of on a face.
-        print("no face pair — framing on the full composition")
+        # Scene pairings, full-length figures, abstracts: frame the whole
+        # composition rather than zooming to a face (a full-length gown is the
+        # subject, not the face).
+        print("framing on the full composition")
 
     if stack:
         half_w, half_h = CANVAS_W, 660
@@ -126,7 +127,9 @@ def compose(query_path, art_path, out_path, stack=False):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--stack"]
+    flags = {"--stack", "--whole"}
+    args = [a for a in sys.argv[1:] if a not in flags]
     if len(args) < 3:
         raise SystemExit(__doc__)
-    compose(args[0], args[1], args[2], stack="--stack" in sys.argv)
+    compose(args[0], args[1], args[2], stack="--stack" in sys.argv,
+            whole="--whole" in sys.argv)
