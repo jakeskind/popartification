@@ -69,18 +69,25 @@ def claude(key, payload):
 
 
 ARCHETYPES = """
-arms outstretched (cruciform) -> saints, Christ, martyrdom, ascension
-tender head-cradle, eyes closed -> Madonna and Child, Pieta, deposition
-standing authority, arms crossed -> Napoleon, state portraits
+Each gesture has SEVERAL possible art families — which one is right depends on
+the RELATIONSHIP and the story, never the pose alone. Pick by relationship.
+
+faces pressed together, hands cradling a face
+  lovers/romance  -> The Kiss (Klimt), The Kiss (Rodin/Hayez/Munch), Cupid and
+                     Psyche, betrothal and marriage portraits, Chagall's lovers
+  parent/child    -> Madonna and Child, Holy Family
+  grief           -> Pieta, Deposition, Lamentation
+  reunion         -> prodigal son, Jacob and Esau, homecomings
+arms outstretched (cruciform) -> saints, Christ, martyrdom, ascension, Icarus
+standing authority, arms crossed -> Napoleon, state and court portraits
 isolated kneeling figure in a crowd -> Christ before Pilate, martyrdom
-one arm raised high -> Icarus, allegory, judgement
-leg kicked high -> dancers, bacchanal
-bodies tangled in a melee -> brawls, battles
+one arm raised high -> Icarus, allegory, judgement, Liberty
+leg kicked high -> dancers, bacchanal, Toulouse-Lautrec
+bodies tangled in a melee -> brawls, battles, Goya
 bent double with a tool -> harvest, reapers, mowers
 two figures walking, tall and small -> processions, expressionist pairs
 pure geometry or texture -> abstraction, pointillism, mosaic, roundel
 """
-
 
 def describe_for_search(key, query_path, context):
     """Ask Claude to do what a human curator does: name the gesture archetype,
@@ -189,20 +196,27 @@ def plan_strategy(key, query_path, context, lessons=""):
                 "of match THIS image wants.\n\n"
                 f"Context: {context or 'unknown — infer from the image'}\n"
                 f"{lessons}\n"
-                "Think about which axis carries this pairing:\n"
-                "- IMAGE: pose, gesture, composition, palette, texture. Wins when the "
-                "photo has a striking, recognisable form.\n"
-                "- CONTEXT: what the moment MEANS — the event, the film being "
-                "premiered, the rivalry, the nickname, the myth the subject evokes. "
-                "Wins when a title or subject can land a joke or resonance (a "
-                "Spider-Man premiere wants Arachne; Messi wants a goat; a clownish "
-                "figure wants a painting titled 'The Clown').\n"
-                "- BOTH: the ideal — a work that looks like the photo AND means "
-                "something about it.\n\n"
-                "Give 3 or 4 competing hypotheses. Make at least one a pure IMAGE "
-                "hypothesis and at least one a pure CONTEXT hypothesis (dig for "
-                "mythology, etymology, wordplay, the film's title, the team's mascot, "
-                "the athlete's epithet). Weights sum to 1.0.\n\n"
+                "There are ALWAYS several clever routes. Canvass them all before "
+                "committing — a single obvious route is how a pairing ends up "
+                "boring or wrong:\n"
+                "- POSE/COMPOSITION: the shape of the moment. But name the "
+                "RELATIONSHIP too (lovers? parent and child? rivals? grief?) — the "
+                "same gesture belongs to different art families depending on it.\n"
+                "- DEPICTED ACTION: search for artworks that literally show this "
+                "action — kissing, embracing, cradling a face, leaping, mourning. "
+                "This finds works whose TITLE says nothing useful.\n"
+                "- EVENT/SUBJECT: the film premiered, the trophy won, the scandal.\n"
+                "- TEAM, MASCOT, CITY, NICKNAME: a Chiefs player, a Cardinals "
+                "outfielder, a Lions lineman, 'the GOAT', 'King James' — the emblem "
+                "or epithet is a rich vein of imagery and wordplay.\n"
+                "- MYTH/ALLEGORY: what myth is this moment a version of?\n"
+                "- CANON: what is the single most FAMOUS artwork of this subject? "
+                "Recognition is half the joy — prefer it when it fits.\n"
+                "- PALETTE/ABSTRACT: colour fields, texture, geometry.\n\n"
+                "Give 4 or 5 competing hypotheses drawn from DIFFERENT routes above "
+                "(never two of the same kind). At least one must be pure "
+                "pose/composition and at least one pure concept. Weights sum to "
+                "1.0.\n\n"
                 'Reply with STRICT JSON only:\n'
                 '{"read": "<one sentence on what this image is and what it wants>", '
                 '"hypotheses": [{"axis": "image|context|both", "idea": "<the leap>", '
@@ -337,7 +351,12 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False):
         '{"ranking": [{"candidate": <n>, "visual": <0-10>, "concept": <0-10>, '
         '"why": "<one short sentence>"}, ...], '
         '"winner": <n>, "caption": "<one witty line for the post, no hashtags>"}'
-        f"\nRank the best {keep}. Default weighting is visual 60 / concept 40, but "
+        f"\nRank the best {keep}, and the top 3 MUST come from three different art "
+        "families or subject types — if several Madonnas (or several of anything) "
+        "are the closest visually, keep only the best one and fill the rest with "
+        "genuinely different ideas. Sanity-check the relationship: a mother-and-"
+        "child work can never stand in for lovers, and vice versa.\n"
+        f"Default weighting is visual 60 / concept 40, but "
         f"this image was read as: {plan.get('read', 'n/a')} — with hypotheses "
         + "; ".join(f"{h.get('axis')} ({h.get('weight')}): {h.get('idea')}"
                     for h in hypotheses)

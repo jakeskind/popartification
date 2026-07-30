@@ -398,8 +398,65 @@ def _wikidata_named(keyword, per_keyword):
     return found
 
 
-SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata,
-           _wikidata_named)
+# ── Wikidata: works that DEPICT AN ACTION ─────────────────────────────────
+# "Find paintings of two people holding each other's faces" — the route that
+# ignores titles entirely and searches what is happening in the picture. Many
+# of the best pairings are works whose title tells you nothing.
+
+DEPICTED_ACTIONS = {
+    "kiss": "Q170518", "kissing": "Q170518", "embrace": "Q189118",
+    "hug": "Q189118", "embracing": "Q189118", "dance": "Q11639",
+    "dancing": "Q11639", "sleep": "Q35831", "sleeping": "Q35831",
+    "crying": "Q216860", "weeping": "Q216860", "prayer": "Q40953",
+    "praying": "Q40953", "running": "Q1780281", "fight": "Q650711",
+    "fighting": "Q650711", "wedding": "Q49836", "marriage": "Q8445",
+    "mourning": "Q1064113", "celebration": "Q1364",
+}
+
+
+def _wikidata_action(keyword, per_keyword):
+    """Artworks whose depicted subject is an ACTION rather than a thing."""
+    qid = DEPICTED_ACTIONS.get(keyword.strip().lower())
+    if not qid:
+        return []
+    sparql = f"""
+    SELECT ?w ?wLabel ?creatorLabel ?image ?inception WHERE {{
+      ?w wdt:P180 wd:{qid} ; wdt:P18 ?image ; wdt:P31/wdt:P279* wd:Q838948 .
+      OPTIONAL {{ ?w wdt:P170 ?creator. }}
+      OPTIONAL {{ ?w wdt:P571 ?inception. }}
+      SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+    }} LIMIT {per_keyword * 3}
+    """
+    data = _json(WD_SPARQL + "?" + urllib.parse.urlencode(
+        {"query": sparql, "format": "json"}), attempts=2, timeout=45)
+    found = []
+    for row in (data or {}).get("results", {}).get("bindings", []):
+        if len(found) >= per_keyword:
+            break
+        image = row.get("image", {}).get("value")
+        if not image:
+            continue
+        thumb = image.replace("http://", "https://")
+        thumb += ("&" if "?" in thumb else "?") + "width=700"
+        found.append({
+            "id": "wda_" + row["w"]["value"].rsplit("/", 1)[-1],
+            "title": row.get("wLabel", {}).get("value", "Untitled"),
+            "artist": row.get("creatorLabel", {}).get("value", ""),
+            "year": row.get("inception", {}).get("value", "")[:4],
+            "museum": "Wikidata / Wikimedia",
+            "medium": "",
+            "image": thumb,
+            "hires": image.replace("http://", "https://"),
+        })
+    return found
+
+
+# _wikidata_action is deliberately NOT in SOURCES: Wikidata's depicts-tagging
+# for actions (kiss, embrace) is far too sparse to return anything, and
+# Commons' subject categories are full of book scans. The working substitute
+# for "find works showing this action" is canonical-name lookup
+# (_wikidata_named) fed by the strategy stage's CANON route.
+SOURCES = (_met, _cleveland, _commons, _vam, _aic, _wikidata, _wikidata_named)
 
 
 def search_museums(keywords, limit=12, per_keyword=3):

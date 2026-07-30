@@ -71,6 +71,16 @@ embedding similarity.
   golden field and a dark golden field are the same palette.
 - **Retrieval recall is the bottleneck.** Homer's *The Veteran in a New Field*
   was in the corpus but never reached the judge.
+- **My own taxonomy caused a bad answer.** The archetype table mapped "tender
+  head-cradle" to exactly one family — Madonna and Child — so an engagement
+  photo retrieved Madonnas and the system looked stupid. Hardcoded
+  gesture→family mappings must be multi-valued and keyed on the RELATIONSHIP,
+  or they become blinkers.
+- **Structured "depicted action" search does not exist usefully.** Wikidata's
+  depicts-tagging for kiss/embrace returns nothing, and Commons' subject
+  categories are dominated by book scans. The working substitute is asking for
+  the CANONICAL WORKS of that action by name (The Kiss, The Lovers, Cupid and
+  Psyche) and looking those up.
 - **Named-artwork lookup is mandatory.** The stack could search by keyword,
   by subject, and by visual similarity, but had no way to fetch a famous work
   BY NAME — so Klimt's *The Kiss* was unreachable (it lives in the Belvedere,
