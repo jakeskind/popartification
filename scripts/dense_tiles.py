@@ -34,7 +34,7 @@ SIDECAR = REPO / "data" / "anthology_boxes.json"
 
 SCALES = [(0.32, 0.60), (0.18, 0.60)]
 MIN_STD = 17.0
-MIN_SOURCE_WIDTH = 900   # tiles from tiny sources are mush — skip
+MIN_SOURCE_WIDTH = 700   # tiles from tiny sources are mush — skip
 
 
 def tiles_for(image):
@@ -56,12 +56,29 @@ def tiles_for(image):
 
 def process(job):
     wid, work = job
-    try:
-        request = urllib.request.Request(work["image"], headers=HEADERS)
-        with urllib.request.urlopen(request, timeout=120) as response:
-            image = Image.open(io.BytesIO(response.read())).convert("RGB")
-    except Exception as error:  # noqa: BLE001
-        return wid, None, f"fetch failed: {error}"
+    # Museums store web-size URLs; most have a predictable full-size sibling.
+    candidates = []
+    url = work["image"]
+    if "web-large" in url:                       # The Met
+        candidates.append(url.replace("web-large", "original"))
+    if "_web." in url:                           # Cleveland
+        candidates.append(url.replace("_web.", "_print."))
+    if "/full/360," in url or "/full/843," in url:   # AIC IIIF
+        candidates.append(url.split("/full/")[0] + "/full/1686,/0/default.jpg")
+    if "wikimedia" in url:
+        candidates.append(url.split("?")[0] + "?width=2400")
+    candidates.append(url)
+    image = None
+    for candidate in candidates:
+        try:
+            request = urllib.request.Request(candidate, headers=HEADERS)
+            with urllib.request.urlopen(request, timeout=120) as response:
+                image = Image.open(io.BytesIO(response.read())).convert("RGB")
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    if image is None:
+        return wid, None, "fetch failed"
     if image.width < MIN_SOURCE_WIDTH:
         return wid, None, f"source only {image.width}px wide"
     results = []
