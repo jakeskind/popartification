@@ -22,7 +22,10 @@ permanently sharpens the next one. Add a line whenever a call was wrong.
    defending arms against a Cubist figure. Never require a face or a figure.
 5. **Rotation is fair game.** A rotated or mirrored match is legitimate
    ("Goat (rotated)") and should be labelled as such.
-6. **Same framing, or crop until it is.** Zoom the artwork so its subject fills
+6. **Same framing, or crop until it is — but never clip a defining feature.**
+   If the tight crop would cut off the crown, hat, raised hand, or any part
+   the picture is ABOUT, zoom BOTH halves out until it fits. Matching head
+   scale by widening the photo's crop beats amputating the artwork's. Zoom the artwork so its subject fills
    the frame like the photo's subject does. Tight crops of a large canvas (a
    single roundel, one face, one gesture) are often the strongest match.
 7. **Two landscapes stack; portrait subjects sit side by side.**
