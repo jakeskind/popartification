@@ -83,7 +83,8 @@ def corpus():
                 works[work["id"]] = {"title": work["title"], "artist": work.get("artist", ""),
                                      "year": work.get("year", ""),
                                      "museum": work.get("museum", ""),
-                                     "image": work["image"]}
+                                     "image": work["image"],
+                                     "shallow": work.get("shallow", False)}
     return works
 
 
@@ -123,7 +124,7 @@ def download_thumbs(works):
         return None
 
     done, failures = 0, []
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         for result in pool.map(fetch, missing.items()):
             done += 1
             if result:
@@ -288,6 +289,8 @@ def build_index():
         new_entries.append({"work": wid, "kind": "full", "rect": None, "angles": None})
         new_vectors.append(feats["v"])
 
+        if works[wid].get("shallow"):
+            continue
         image = Image.open(IMAGES / f"{wid}.jpg").convert("RGB")
         for kind, (rx, ry, rw, rh) in REGIONS.items():
             box = (int(rx * image.width), int(ry * image.height),
