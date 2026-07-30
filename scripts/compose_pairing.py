@@ -71,13 +71,27 @@ def face_frame_crop(image, face, aspect, fill=None, rel_center=None):
     return crop, achieved
 
 
+def center_crop(image, aspect):
+    """Largest centered crop at the target aspect — keeps whole compositions."""
+    w, h = image.size
+    if w / h > aspect:
+        cw, ch = h * aspect, h
+    else:
+        cw, ch = w, w / aspect
+    left, top = (w - cw) / 2, (h - ch) / 2
+    return image.crop((int(left), int(top), int(left + cw), int(top + ch)))
+
+
 def compose(query_path, art_path, out_path, stack=False):
     query = Image.open(query_path).convert("RGB")
     art = Image.open(art_path).convert("RGB")
     query_face = dominant_face(query_path)
     art_face = dominant_face(art_path)
-    if not query_face or not art_face:
-        raise SystemExit("need a detectable face in both images")
+    faces = bool(query_face and art_face)
+    if not faces:
+        # Scene pairings (figures seen from behind, abstracts, landscapes):
+        # frame both on the whole composition instead of on a face.
+        print("no face pair — framing on the full composition")
 
     if stack:
         half_w, half_h = CANVAS_W, 660
@@ -85,11 +99,15 @@ def compose(query_path, art_path, out_path, stack=False):
         half_w, half_h = (CANVAS_W - GAP) // 2, 844
     aspect = half_w / half_h
 
-    query_half, achieved = face_frame_crop(query, query_face, aspect)
-    # Mirror the query's framing onto the artwork: same face fill, same
-    # relative face position.
-    art_half, _ = face_frame_crop(art, art_face, aspect,
-                                  fill=achieved["fill"], rel_center=achieved["rel"])
+    if faces:
+        query_half, achieved = face_frame_crop(query, query_face, aspect)
+        # Mirror the query's framing onto the artwork: same face fill, same
+        # relative face position.
+        art_half, _ = face_frame_crop(art, art_face, aspect,
+                                      fill=achieved["fill"], rel_center=achieved["rel"])
+    else:
+        query_half = center_crop(query, aspect)
+        art_half = center_crop(art, aspect)
 
     query_half = query_half.resize((half_w, half_h), Image.LANCZOS)
     art_half = art_half.resize((half_w, half_h), Image.LANCZOS)
@@ -103,7 +121,8 @@ def compose(query_path, art_path, out_path, stack=False):
         canvas.paste(query_half, (0, 0))
         canvas.paste(art_half, (half_w + GAP, 0))
     canvas.save(out_path, "JPEG", quality=93)
-    print(f"saved {out_path} {canvas.size} (face fill {achieved['fill']:.0%})")
+    print(f"saved {out_path} {canvas.size}"
+          + (f" (face fill {achieved['fill']:.0%})" if faces else ""))
 
 
 if __name__ == "__main__":
