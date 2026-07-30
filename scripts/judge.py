@@ -96,7 +96,7 @@ def judge(query_path, context="", pool=16, keep=5):
     # Merge in title-matched works the visual pass missed.
     seen = {c[2] for c in visual}
     candidates = list(visual)
-    for wid, work in keyword_candidates(keywords, limit=pool):
+    for wid, work in keyword_candidates(keywords, limit=pool * 2):
         if wid in seen or not (IMAGES / f"{wid}.jpg").exists():
             continue
         seen.add(wid)
@@ -104,11 +104,22 @@ def judge(query_path, context="", pool=16, keep=5):
     print(f"judging {len(candidates)} candidates "
           f"({len(visual)} visual + {len(candidates) - len(visual)} by title)")
 
+    # Accumulated editorial rules — every past correction sharpens this call.
+    lessons_path = Path(__file__).resolve().parent.parent / "LESSONS.md"
+    lessons = ""
+    if lessons_path.exists():
+        text = lessons_path.read_text()
+        if "## Judging rules" in text:
+            body = text.split("## Judging rules", 1)[1]
+            lessons = "\n\nHOUSE RULES (learned from past reviews):\n" + \
+                      body.split("## Architectural")[0].strip()
+
     content = [
         {"type": "text", "text":
             "You are the editor of an account that pairs pop-culture photos with "
             "artworks that look strikingly identical (in the spirit of ArtButSports). "
-            f"Pop-culture context: {context or 'unknown — infer from the image'}.\n\n"
+            f"Pop-culture context: {context or 'unknown — infer from the image'}."
+            f"{lessons}\n\n"
             "THE QUERY IMAGE:"},
         image_block(Image.open(query_path)),
         {"type": "text", "text": "THE CANDIDATES (details may be crops of larger works):"},

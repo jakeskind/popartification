@@ -193,7 +193,19 @@ def color_features(path):
         angle = h / 256 * 2 * math.pi
         weight = s / 255
         grid += [math.cos(angle) * weight, math.sin(angle) * weight, weight]
-    return {"hist": hue_hist, "grid": grid}
+
+    # The SKY BAND gets its own signature. Outdoor pairings hinge on it (blue
+    # sky over a golden field vs a green treeline over the same field), but a
+    # thin top strip is invisible to a whole-image histogram.
+    # Measure the PRESENCE of blue sky in the upper third, not the band's
+    # average colour. Averaging a strip that is part sky and part treeline
+    # yields mud and hides the very feature the eye keys on.
+    upper = list(hsv.crop((0, 0, 128, 42)).getdata())
+    blue = sum(1 for h, s, v in upper if 120 <= h <= 185 and s > 45 and v > 90)
+    bright = sum(1 for h, s, v in upper if v > 150)
+    n = len(upper) or 1
+    sky = [blue / n, bright / n]
+    return {"hist": hue_hist, "grid": grid, "sky": sky}
 
 
 def face_crop_box(figure, image_size):
@@ -376,7 +388,16 @@ def color_score(query, work):
     intersection = sum(min(a, b) for a, b in zip(query["hist"], work["hist"]))
     grid_distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(query["grid"], work["grid"]))
                               / len(query["grid"]))
-    return 0.6 * intersection + 0.4 * max(0, 1 - grid_distance * 1.6)
+    score = 0.48 * intersection + 0.32 * max(0, 1 - grid_distance * 1.6)
+    if len(query.get("sky", [])) == 2 and len(work.get("sky", [])) == 2:
+        # Both have sky, or neither does: reward agreement on whether a blue
+        # sky is PRESENT (and how bright the upper region is).
+        blue_agreement = 1 - min(1, abs(query["sky"][0] - work["sky"][0]) * 2.5)
+        bright_agreement = 1 - min(1, abs(query["sky"][1] - work["sky"][1]) * 1.8)
+        score += 0.20 * (0.7 * blue_agreement + 0.3 * bright_agreement)
+    else:
+        score += 0.20 * 0.5
+    return score
 
 
 def title_score(query_title, candidate_title):
