@@ -217,10 +217,17 @@ def plan_strategy(key, query_path, context, lessons=""):
                 "(never two of the same kind). At least one must be pure "
                 "pose/composition and at least one pure concept. Weights sum to "
                 "1.0.\n\n"
+                "CRITICAL: for each hypothesis also NAME 2-3 specific famous "
+                "artworks (\"Title Artist\") that fit it — e.g. 'The Man with the "
+                "Golden Helmet Rembrandt', 'Leonidas at Thermopylae David', "
+                "'Ulysses deriding Polyphemus Turner'. Generic keywords retrieve "
+                "obscure text-matches; named masterpieces are retrieved directly "
+                "and are usually the winning candidates.\n\n"
                 'Reply with STRICT JSON only:\n'
                 '{"read": "<one sentence on what this image is and what it wants>", '
                 '"hypotheses": [{"axis": "image|context|both", "idea": "<the leap>", '
-                '"keywords": ["...", "..."], "weight": 0.4}, ...]}'},
+                '"keywords": ["...", "..."], '
+                '"works": ["<Famous Title> <Artist>", "..."], "weight": 0.4}, ...]}'},
             image_block(Image.open(query_path)),
         ]}]})
     plan = loads_loose(reply)
@@ -299,7 +306,21 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
     # …and search the live museum APIs, across every object type. The local
     # index is finite and paintings-only; the web is neither. This is what
     # finds an Arachne etching for a Spider-Man premiere.
+    named_works = [w for h in hypotheses for w in h.get("works", [])]
     if not no_live:
+        from live_search import _wikidata_named
+        for name in dict.fromkeys(named_works):
+            for hit in _wikidata_named(name, 1):
+                if hit["id"] in seen:
+                    continue
+                # Reuse the thumbnail path machinery from search_museums.
+                from live_search import search_museums as _sm  # noqa: F401
+                seen.add(hit["id"])
+                candidates.append((0.0, {"named": 1.0}, hit["id"], {
+                    "title": hit["title"], "artist": hit["artist"],
+                    "year": hit["year"], "museum": hit["museum"],
+                    "medium": hit.get("medium", ""), "image": hit["image"],
+                    "hires": hit.get("hires"), "url": hit["image"]}, None, "none"))
         for hit in search_museums(keywords, limit=pool):
             if hit["id"] in seen:
                 continue
@@ -334,6 +355,15 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
     for index, (_, _, wid, work, entry, transform) in enumerate(candidates, start=1):
         if work.get("path"):
             image, kind = Image.open(work["path"]).convert("RGB"), "live"
+        elif work.get("url"):
+            try:
+                request = urllib.request.Request(
+                    work["url"], headers={"User-Agent": "MuseArtMatch/2.0"})
+                with urllib.request.urlopen(request, timeout=90) as response:
+                    image = Image.open(io.BytesIO(response.read())).convert("RGB")
+                kind = "live"
+            except Exception:  # noqa: BLE001 - drop unfetchable candidates
+                continue
         else:
             image, kind = matched_image(wid, entry, transform)
         line = (f"Candidate {index}: “{work['title']}” — {work['artist'] or 'unknown'}"
@@ -401,6 +431,11 @@ def judge(query_path, context="", pool=16, keep=5, no_live=False, json_out=None)
             try:
                 if work.get("path"):
                     image = Image.open(work["path"]).convert("RGB")
+                elif work.get("url"):
+                    request = urllib.request.Request(
+                        work["url"], headers={"User-Agent": "MuseArtMatch/2.0"})
+                    with urllib.request.urlopen(request, timeout=90) as response:
+                        image = Image.open(io.BytesIO(response.read())).convert("RGB")
                 else:
                     image, _ = matched_image(wid, entry, transform)
                 image.thumbnail((640, 640))

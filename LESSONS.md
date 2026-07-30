@@ -76,6 +76,11 @@ embedding similarity.
   photo retrieved Madonnas and the system looked stupid. Hardcoded
   gesture→family mappings must be multi-valued and keyed on the RELATIONSHIP,
   or they become blinkers.
+- **Keyword retrieval finds obscure text-matches, not masterpieces.** "Odysseus"
+  as a keyword returned a bronze mirror and a Zurich hall mural; the canonical
+  answers (Man with the Golden Helmet, Leonidas, the Turner Ulysses) only
+  surface when the strategy NAMES famous works and they are looked up by name.
+  Every hypothesis must carry a `works` list of specific famous titles.
 - **Structured "depicted action" search does not exist usefully.** Wikidata's
   depicts-tagging for kiss/embrace returns nothing, and Commons' subject
   categories are dominated by book scans. The working substitute is asking for
