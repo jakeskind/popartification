@@ -380,16 +380,26 @@ def match(query_path, query_title=None, top=6):
     if grayscale:
         print("(query is grayscale — ignoring the color axis)")
 
-    # Mirror matching: a leftward gaze should match rightward paintings —
-    # compare both the query and its horizontal flip, keep the better.
+    # Transform variants: mirror AND rotations — an abstract goat rotated 90
+    # degrees can be the twin (the art side is shown inverse-transformed).
     from PIL import ImageOps
-    flip_path = Path(tempfile.gettempdir()) / "artmatch_query_flip.jpg"
-    ImageOps.mirror(image).save(flip_path, "JPEG", quality=90)
-    flip = vision_features([flip_path], quiet=True).get(str(flip_path))
-    flip_v = None
-    if flip:
-        flip_v = np.asarray(flip["v"], dtype=np.float32)
-        flip_v /= (np.linalg.norm(flip_v) or 1)
+    VARIANTS = [("none", None), ("mirror", None),
+                ("rot90", Image.ROTATE_90), ("rot180", Image.ROTATE_180),
+                ("rot270", Image.ROTATE_270)]
+    variant_vectors = [query_v]
+    tmp = Path(tempfile.gettempdir())
+    for name, op in VARIANTS[1:]:
+        variant_path = tmp / f"artmatch_query_{name}.jpg"
+        (ImageOps.mirror(image) if name == "mirror" else image.transpose(op)).save(
+            variant_path, "JPEG", quality=90)
+        feats = vision_features([variant_path], quiet=True).get(str(variant_path))
+        if feats:
+            v = np.asarray(feats["v"], dtype=np.float32)
+            v /= (np.linalg.norm(v) or 1)
+            variant_vectors.append(v)
+        else:
+            variant_vectors.append(query_v)
+    flip_v = variant_vectors[1]
 
     flip_face_v, flip_face_angles = None, None
     if face_mode:
@@ -404,9 +414,9 @@ def match(query_path, query_title=None, top=6):
             # Mirroring negates yaw and roll; pitch is unchanged.
             flip_face_angles = [-face_angles[0], -face_angles[1], face_angles[2]]
 
-    sims_full = vectors @ query_v
-    if flip_v is not None:
-        sims_full = np.maximum(sims_full, vectors @ flip_v)
+    sims_stack = np.stack([vectors @ v for v in variant_vectors], axis=1)
+    sims_full = sims_stack.max(axis=1)
+    best_variant = sims_stack.argmax(axis=1)   # index into VARIANTS
     sims_face = vectors @ face_v if face_mode else None
     if face_mode and flip_face_v is not None:
         sims_face = np.maximum(sims_face, vectors @ flip_face_v)
@@ -437,7 +447,7 @@ def match(query_path, query_title=None, top=6):
     if face_mode:
         weights = {"face": 0.72, "region": 0.13, "color": 0.08, "figures": 0.07}
     else:
-        weights = {"region": 0.50, "body": 0.20, "color": 0.15, "figures": 0.15}
+        weights = {"region": 0.42, "body": 0.15, "color": 0.28, "figures": 0.15}
     if grayscale and "color" in weights:
         weights["face" if face_mode else "region"] += weights["color"]
         weights["color"] = 0
@@ -450,7 +460,9 @@ def match(query_path, query_title=None, top=6):
         if qn == 0 and cn == 0:
             return 0.6
         if qn == 0 or cn == 0:
-            return 0.1
+            # Faceless candidates (abstracts!) stay in the running — shape and
+            # color decide, not a missing-figure penalty.
+            return 0.45
         return min(qn, cn) / max(qn, cn)
 
     scored = []
@@ -480,21 +492,34 @@ def match(query_path, query_title=None, top=6):
     results = []
     for total, parts, wid, entry_index in scored[:top]:
         entry = entries[entry_index] if entry_index is not None else None
-        results.append((total, parts, wid, works[wid], entry))
+        transform = "none"
+        if entry_index is not None and entries[entry_index]["kind"] in ("full", "region"):
+            transform = VARIANTS[best_variant[entry_index]][0]
+        results.append((total, parts, wid, works[wid], entry, transform))
     return results
 
 
 # ── Output ────────────────────────────────────────────────────────────────
 
-def matched_image(wid, entry):
-    """The matched painting — cropped to the winning detail when a crop won."""
+INVERSE_TRANSFORM = {"rot90": Image.ROTATE_270, "rot180": Image.ROTATE_180,
+                     "rot270": Image.ROTATE_90}
+
+
+def matched_image(wid, entry, transform="none"):
+    """The matched painting — cropped to the winning detail when a crop won,
+    inverse-transformed when a rotated/mirrored query variant matched."""
     image = Image.open(IMAGES / f"{wid}.jpg").convert("RGB")
     if entry and entry["kind"] != "full" and entry.get("rect"):
         rx, ry, rw, rh = entry["rect"]
         box = (int(rx * image.width), int(ry * image.height),
                int((rx + rw) * image.width), int((ry + rh) * image.height))
-        return image.crop(box), entry["kind"]
-    return image, "full"
+        image = image.crop(box)
+    if transform in INVERSE_TRANSFORM:
+        image = image.transpose(INVERSE_TRANSFORM[transform])
+    elif transform == "mirror":
+        from PIL import ImageOps
+        image = ImageOps.mirror(image)
+    return image, (entry["kind"] if entry else "full")
 
 
 def contact_sheet(query_path, matches, out_path):
@@ -516,9 +541,11 @@ def contact_sheet(query_path, matches, out_path):
             draw.text((x + 2, tile + gap + 4 + row * 16), line[:44], fill=(232, 226, 210))
 
     paste(Image.open(query_path).convert("RGB"), 0, ["YOUR IMAGE"])
-    for index, (total, _, wid, work, entry) in enumerate(matches, start=1):
-        image, kind = matched_image(wid, entry)
+    for index, (total, _, wid, work, entry, transform) in enumerate(matches, start=1):
+        image, kind = matched_image(wid, entry, transform)
         detail = " · detail" if kind != "full" else ""
+        if transform != "none":
+            detail += f" · {transform}"
         paste(image, index,
               [f"#{index}  {work['title']}",
                f"{work['artist']}" + (f", {work['year']}" if work["year"] else ""),
@@ -539,7 +566,7 @@ def main():
 
     matches = match(query_path, query_title, top)
     print(f"\ntop {len(matches)} matches:")
-    for rank, (total, parts, wid, work, entry) in enumerate(matches, start=1):
+    for rank, (total, parts, wid, work, entry, transform) in enumerate(matches, start=1):
         detail = " ".join(f"{k}={v:.2f}" for k, v in parts.items())
         kind = entry["kind"] if entry else "full"
         line = f"{rank}. [{total:.3f}] {work['title']} — {work['artist']}"
@@ -549,6 +576,8 @@ def main():
             line += f" · {work['museum']}"
         if kind != "full":
             line += f"  [{kind} crop]"
+        if transform != "none":
+            line += f"  [{transform}]"
         print(line)
         print(f"     {detail}  ({wid})")
 

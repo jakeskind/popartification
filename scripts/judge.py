@@ -69,8 +69,8 @@ def judge(query_path, context="", pool=16, keep=5):
         image_block(Image.open(query_path)),
         {"type": "text", "text": "THE CANDIDATES (details may be crops of larger works):"},
     ]
-    for index, (_, _, wid, work, entry) in enumerate(candidates, start=1):
-        image, kind = matched_image(wid, entry)
+    for index, (_, _, wid, work, entry, transform) in enumerate(candidates, start=1):
+        image, kind = matched_image(wid, entry, transform)
         line = (f"Candidate {index}: “{work['title']}” — {work['artist'] or 'unknown'}"
                 + (f", {work['year']}" if work["year"] else "")
                 + (f" · {work['museum']}" if work["museum"] else "")
@@ -83,8 +83,11 @@ def judge(query_path, context="", pool=16, keep=5):
         "- visual: is it LITERALLY the same image — pose, gaze direction, head "
         "angle, framing, mood?\n"
         "- concept: does the TITLE or subject land a joke or resonance against "
-        "the pop context (e.g. a work titled 'The Clown' for a clownable "
-        "subject, a Madonna for a pop idol)?\n\n"
+        "the pop context? Prize WORDPLAY on nicknames and slang hard (a work "
+        "titled 'Goat' for Messi = G.O.A.T., 'The Clown' for a clownable "
+        "subject, a Madonna for a pop idol). Be open-minded about ABSTRACT "
+        "works — if the shapes and colors echo the photo, that unexpectedness "
+        "is a feature, not a bug.\n\n"
         f"Reply with STRICT JSON only:\n"
         '{"ranking": [{"candidate": <n>, "visual": <0-10>, "concept": <0-10>, '
         '"why": "<one short sentence>"}, ...], '
@@ -107,7 +110,7 @@ def judge(query_path, context="", pool=16, keep=5):
 
     print("\nJUDGE RANKING (visual 60 / concept 40):")
     for row in verdict["ranking"]:
-        _, _, wid, work, entry = candidates[row["candidate"] - 1]
+        _, _, wid, work, entry, _tf = candidates[row["candidate"] - 1]
         kind = entry["kind"] if entry else "full"
         print(f"  #{row['candidate']} v={row['visual']} c={row['concept']}  "
               f"{work['title']} — {work['artist']} [{kind}]")
