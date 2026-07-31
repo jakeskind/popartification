@@ -135,3 +135,5 @@ What won, and which axis carried it.
 - **creature** → *Theseus and the Minotaur* (Canova, Antonio). Hypotheses: image(0.3), image(0.2), context(0.2), context(0.2). Half man, half bull, all HR violation — Theseus never had to deal with a glass door.
 
 - **creature (black minotaur robot behind office door)** → *The Unexpected Answer* (Magritte, 1933). The shared anomaly was the DOOR itself — a dark creature-silhouette filling a doorway in a blank wall. Pipeline reached the Minotaur myth + a Newman abstract on its own; the Magritte came from asking 'what famous artwork is about this exact situation?' Titles that read like a caption for the photo ('The Unexpected Answer') are gold.
+
+- **leopold (hedge fund manager, clean bust portrait)** → *The Fortune-Teller* (Georges de La Tour, Met). Winning combo: visual twin (young pale mark, serene half-smile) + title wordplay (fortune/hedge fund) + the painting's STORY as caption (smiling while every hand empties his pockets = risked and lost in the market). Composed zoomed out so the robbers stay visible, mirrored for direction. The subject's own story can be the concept axis.
