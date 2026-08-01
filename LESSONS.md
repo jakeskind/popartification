@@ -31,7 +31,9 @@ permanently sharpens the next one. Add a line whenever a call was wrong.
 7. **Two landscapes stack; portrait subjects sit side by side.**
 8. **Caption style.** First line is the artwork's name, then 👤 artist /
    🖌 medium / 📅 year / 🏛 museum, then (optionally) one short paragraph of
-   background on the painting, then plain words in a single bracket list —
+   background on the PAINTING ONLY — never explain the modern photo or the
+   parallel; the audience already knows the meme, and spelling out the joke
+   kills it — then plain words in a single bracket list —
    \[jimothy, seattle raccoon, …] — instead of hashtags. No quips.
 9. **Emotion counts as much as geometry.** Grief, taunting, exhaustion,
    triumph, isolation — the feeling should rhyme, not just the limbs.
