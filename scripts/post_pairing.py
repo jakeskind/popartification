@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 GRAPH = "https://graph.instagram.com/v23.0"
-BASE_TAGS = ["#lifeimitatesarthistory", "#arthistory", "#art", "#museum", "#popculture"]
+BASE_WORDS = ["life imitates art history", "art history", "pop culture"]
 
 
 def token():
@@ -54,8 +54,12 @@ def build_caption(args):
         lines.append(f"📅 {args['year']}")
     if args.get("museum"):
         lines.append(f"🏛 {args['museum']}")
-    tags = ["#" + t.lstrip("#") for t in args.get("tags", "").split()] + BASE_TAGS
-    lines += ["", " ".join(dict.fromkeys(tags))]
+
+    if args.get("info"):
+        lines += ["", args["info"]]
+
+    words = [w.strip() for w in (args.get("tags") or "").split(",") if w.strip()]
+    lines += ["", "[" + ", ".join(words + BASE_WORDS) + "]"]
     return "\n".join(lines)
 
 
@@ -96,7 +100,7 @@ def main():
         raise SystemExit(__doc__)
     image_url = argv[0]
     args = {}
-    for flag in ("title", "artist", "medium", "year", "museum", "tags"):
+    for flag in ("title", "artist", "medium", "year", "museum", "tags", "info"):
         if f"--{flag}" in argv:
             args[flag] = argv[argv.index(f"--{flag}") + 1]
     caption = build_caption(args)

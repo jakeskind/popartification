@@ -29,8 +29,10 @@ permanently sharpens the next one. Add a line whenever a call was wrong.
    the frame like the photo's subject does. Tight crops of a large canvas (a
    single roundel, one face, one gesture) are often the strongest match.
 7. **Two landscapes stack; portrait subjects sit side by side.**
-8. **No quips in the caption.** First line is the artwork's name, then
-   👤 artist / 🖌 medium / 📅 year / 🏛 museum, pop identity in the hashtags.
+8. **Caption style.** First line is the artwork's name, then 👤 artist /
+   🖌 medium / 📅 year / 🏛 museum, then (optionally) one short paragraph of
+   background on the painting, then plain words in a single bracket list —
+   \[jimothy, seattle raccoon, …] — instead of hashtags. No quips.
 9. **Emotion counts as much as geometry.** Grief, taunting, exhaustion,
    triumph, isolation — the feeling should rhyme, not just the limbs.
 
@@ -137,3 +139,5 @@ What won, and which axis carried it.
 - **creature (black minotaur robot behind office door)** → *The Unexpected Answer* (Magritte, 1933). The shared anomaly was the DOOR itself — a dark creature-silhouette filling a doorway in a blank wall. Pipeline reached the Minotaur myth + a Newman abstract on its own; the Magritte came from asking 'what famous artwork is about this exact situation?' Titles that read like a caption for the photo ('The Unexpected Answer') are gold.
 
 - **leopold (hedge fund manager, clean bust portrait)** → *The Fortune-Teller* (Georges de La Tour, Met). Winning combo: visual twin (young pale mark, serene half-smile) + title wordplay (fortune/hedge fund) + the painting's STORY as caption (smiling while every hand empties his pockets = risked and lost in the market). Composed zoomed out so the robbers stay visible, mirrored for direction. The subject's own story can be the concept axis.
+
+- **jimothy (Seattle raccoon, short spine syndrome, speck on a lawn)** → *Christina's World* (Wyeth, MoMA). Brief was visual (small speck in vast monotonous field) + title honoring uniqueness/spine. Won on composition AND story: Christina Olson's muscular condition, crossing her field her own way. Position-matched both specks low-left with horizons up top.
