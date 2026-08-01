@@ -1,0 +1,38 @@
+name: "POTD relay: fire muse's daily post"
+
+# GitHub's scheduler has never once fired the muse repo's cron (private
+# repo, cause unknown) while this public repo's Actions demonstrably run.
+# So the alarm clock lives here: on schedule, dispatch muse's POTD workflow
+# via the API. Needs a GH_PAT secret (classic PAT with repo scope). The
+# script's already-posted-today guard makes every extra firing a no-op.
+on:
+  schedule:
+    - cron: "5,35 11 * * *"   # 7:05 / 7:35 AM ET (daylight time)
+    - cron: "5 12 * * *"      # 8:05 insurance
+  workflow_dispatch: {}
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch muse POTD workflow
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT secret not set on this repo — cannot relay."
+            exit 1
+          fi
+          for wf in potd-instagram.yml potd-daily.yml; do
+            code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+              -H "Authorization: Bearer $GH_PAT" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/jakeskind/muse/actions/workflows/$wf/dispatches" \
+              -d '{"ref":"main"}')
+            echo "$wf -> HTTP $code"
+            [ "$code" = "204" ] && exit 0
+            cat /tmp/resp.json
+          done
+          echo "::error::No workflow accepted the dispatch."
+          exit 1
