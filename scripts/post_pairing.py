@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 GRAPH = "https://graph.instagram.com/v23.0"
-BASE_TAGS = ["#popartification", "#arthistory", "#art", "#museum", "#popculture"]
+BASE_TAGS = ["#lifeimitatesarthistory", "#arthistory", "#art", "#museum", "#popculture"]
 
 
 def token():
