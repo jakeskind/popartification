@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: python3 -m pip install --quiet pillow numpy
+        run: python3 -m pip install --quiet --user --break-system-packages pillow numpy
 
       - name: Extract the photo from the issue
         env:

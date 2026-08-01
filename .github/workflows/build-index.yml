@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install pillow
-        run: python3 -m pip install --user pillow
+        run: python3 -m pip install --user --break-system-packages pillow numpy
 
       - name: Restore previous index (incremental rebuild)
         env:
