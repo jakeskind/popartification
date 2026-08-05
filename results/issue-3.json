@@ -1,0 +1,151 @@
+{
+  "read": "Martha sits chest-deep in a churning white jacuzzi, calm-faced amid violent froth \u2014 the joke is her serene composure inside turmoil, echoing her real-life fall from grace into federal custody.",
+  "caption": "Same tub, same composure \u2014 one bleeds for the Revolution, one just skipped the SEC memo.",
+  "options": [
+    {
+      "label": "A",
+      "wid": "wdn_Q636537",
+      "title": "The Death of Marat",
+      "artist": "Jacques-Louis David",
+      "year": "1793",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Jacques-Louis_David_-_Marat_assassinated_-_Google_Art_Project_2.jpg?width=2000",
+      "query_box": [
+        0.32,
+        0.32,
+        0.42,
+        0.5
+      ],
+      "art_box": [
+        0.05,
+        0.05,
+        0.5,
+        0.55
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 6,
+      "concept": 9,
+      "why": "A calm, resigned face floating in a tub after public disgrace \u2014 Marat's bath-bound fall from grace mirrors Martha's own scandal-soak.",
+      "thumb": "result_A.jpg",
+      "winner": true
+    },
+    {
+      "label": "B",
+      "wid": "wdn_Q151047",
+      "title": "The Birth of Venus",
+      "artist": "Sandro Botticelli",
+      "year": "1480",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg?width=2000",
+      "query_box": [
+        0.3,
+        0.3,
+        0.45,
+        0.55
+      ],
+      "art_box": [
+        0.35,
+        0.1,
+        0.3,
+        0.65
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 5,
+      "concept": 7,
+      "why": "Venus rises serene from churning sea-foam just as Martha sits serene inside hers \u2014 birth and downfall both dressed in white spray.",
+      "thumb": "result_B.jpg",
+      "winner": false
+    },
+    {
+      "label": "C",
+      "wid": "wdn_Q16038731",
+      "title": "Snow Storm: Steam-Boat off a Harbour's Mouth",
+      "artist": "J. M. W. Turner",
+      "year": "1842",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Joseph_Mallord_William_Turner_-_Snow_Storm_-_Steam-Boat_off_a_Harbour%27s_Mouth_-_WGA23178.jpg?width=2000",
+      "query_box": [
+        0.1,
+        0.4,
+        0.8,
+        0.55
+      ],
+      "art_box": [
+        0.15,
+        0.15,
+        0.65,
+        0.65
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 6,
+      "concept": 5,
+      "why": "Pure churn: Turner's white-grey vortex is the abstract twin of the jacuzzi's frothing water, minus the celebrity calm at its centre.",
+      "thumb": "result_C.jpg",
+      "winner": false
+    },
+    {
+      "label": "D",
+      "wid": "wdn_Q27976428",
+      "title": "Baptism",
+      "artist": "Hendrik Goltzius",
+      "year": "1608",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Hendrick_Goltzius_-_De_doop_van_Christus_-_%D0%93%D0%AD-701_-_Hermitage_Museum.jpg?width=2000",
+      "query_box": [
+        0.3,
+        0.35,
+        0.45,
+        0.5
+      ],
+      "art_box": [
+        0.1,
+        0.35,
+        0.75,
+        0.55
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 5,
+      "concept": 6,
+      "why": "A ritual dunking meant to wash sin away \u2014 an ironic baptism for a woman whose 'cleansing' came via federal sentence.",
+      "thumb": "result_D.jpg",
+      "winner": false
+    },
+    {
+      "label": "E",
+      "wid": "cma_127746",
+      "title": "Baptism of Christ",
+      "artist": "Jacopo Tintoretto",
+      "year": "1580s",
+      "museum": "Cleveland Museum of Art",
+      "medium": "oil on canvas",
+      "hires": "https://openaccess-cdn.clevelandart.org/1950.400/1950.400_print.jpg",
+      "query_box": [
+        0.3,
+        0.35,
+        0.45,
+        0.5
+      ],
+      "art_box": [
+        0.15,
+        0.3,
+        0.6,
+        0.55
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 4,
+      "concept": 5,
+      "why": "Another figure calmly submitting to turbulent water under a watching sky, redemption disguised as immersion.",
+      "thumb": "result_E.jpg",
+      "winner": false
+    }
+  ]
+}

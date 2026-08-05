@@ -147,3 +147,5 @@ What won, and which axis carried it.
 - **park-bench lawyers (caught mid-affair)** → *The Kiss* (Rodin). Won on pose (the one famous SEATED kiss; her arm to his head mirrored the photo) and buried story: everyone reads it as romance but it's Paolo and Francesca — an illicit affair caught in the act, from The Gates of Hell. When the photo IS a scandal, find the artwork whose hidden story is the same scandal.
 
 - **query** → *The Birth of Venus* (Sandro Botticelli). Hypotheses: image(0.25), image(0.25), context(0.2), context(0.15). Venus, but make it hydrotherapy — not a hair out of place.
+
+- **query** → *The Death of Marat* (Jacques-Louis David). Hypotheses: context(0.3), image(0.25), image(0.2), both(0.15). Same tub, same composure — one bleeds for the Revolution, one just skipped the SEC memo.
