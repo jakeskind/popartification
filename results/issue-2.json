@@ -1,0 +1,151 @@
+{
+  "read": "Martha Stewart's calm, composed face floats above a violently churning, white-foamed jacuzzi \u2014 the anomaly is the contrast between her serene expression and the chaotic bubbling water swallowing her body up to the shoulders.",
+  "caption": "Venus, but make it hydrotherapy \u2014 not a hair out of place.",
+  "options": [
+    {
+      "label": "A",
+      "wid": "wdn_Q151047",
+      "title": "The Birth of Venus",
+      "artist": "Sandro Botticelli",
+      "year": "1480",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg?width=2000",
+      "query_box": [
+        0.12,
+        0.25,
+        0.72,
+        0.65
+      ],
+      "art_box": [
+        0.36,
+        0.05,
+        0.28,
+        0.85
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 6,
+      "concept": 9,
+      "why": "Venus rises serene from sea-foam exactly as Martha floats unbothered in the churn.",
+      "thumb": "result_A.jpg",
+      "winner": true
+    },
+    {
+      "label": "B",
+      "wid": "wdn_Q16038731",
+      "title": "Snow Storm: Steam-Boat off a Harbour's Mouth",
+      "artist": "J. M. W. Turner",
+      "year": "1842",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Joseph_Mallord_William_Turner_-_Snow_Storm_-_Steam-Boat_off_a_Harbour%27s_Mouth_-_WGA23178.jpg?width=2000",
+      "query_box": [
+        0.05,
+        0.35,
+        0.9,
+        0.6
+      ],
+      "art_box": [
+        0.25,
+        0.1,
+        0.5,
+        0.7
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 7,
+      "concept": 4,
+      "why": "Turner's whirling white froth is the closest abstract echo of the jacuzzi's violent bubbling.",
+      "thumb": "result_B.jpg",
+      "winner": false
+    },
+    {
+      "label": "C",
+      "wid": "wdn_Q2912117",
+      "title": "The Tub",
+      "artist": "Edgar Degas",
+      "year": "1886",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Edgar_Degas_-_Le_Tub_%281886_Mus%C3%A9e_d%27Orsay%29.jpg?width=2000",
+      "query_box": [
+        0.1,
+        0.3,
+        0.75,
+        0.6
+      ],
+      "art_box": [
+        0.05,
+        0.05,
+        0.55,
+        0.85
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 5,
+      "concept": 5,
+      "why": "A solitary bather half-submerged, quietly self-contained, mirrors Martha's isolation in the tub.",
+      "thumb": "result_C.jpg",
+      "winner": false
+    },
+    {
+      "label": "D",
+      "wid": "wdn_Q3498655",
+      "title": "V\u00e9nus Anadyom\u00e8ne",
+      "artist": "Jean-Auguste-Dominique Ingres",
+      "year": "1808",
+      "museum": "Wikidata / Wikimedia",
+      "medium": "",
+      "hires": "https://commons.wikimedia.org/wiki/Special:FilePath/Ingres_Venere_Anadiomene.jpg?width=2000",
+      "query_box": [
+        0.15,
+        0.2,
+        0.65,
+        0.65
+      ],
+      "art_box": [
+        0.15,
+        0.05,
+        0.7,
+        0.85
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 5,
+      "concept": 6,
+      "why": "Another placid Venus emerging from water, hand to hair, composure intact amid the sea.",
+      "thumb": "result_D.jpg",
+      "winner": false
+    },
+    {
+      "label": "E",
+      "wid": "cma_118159",
+      "title": "Bathers Playing with a Crab",
+      "artist": "Pierre-Auguste Renoir",
+      "year": "c. 1897",
+      "museum": "Cleveland Museum of Art",
+      "medium": "oil on canvas",
+      "hires": "https://openaccess-cdn.clevelandart.org/1939.269/1939.269_print.jpg",
+      "query_box": [
+        0.1,
+        0.35,
+        0.8,
+        0.55
+      ],
+      "art_box": [
+        0.15,
+        0.1,
+        0.6,
+        0.7
+      ],
+      "rotate": 0,
+      "mirror": false,
+      "visual": 5,
+      "concept": 3,
+      "why": "The splashing, foam-flecked bathers echo the jacuzzi's chaotic water even without a calm centerpiece.",
+      "thumb": "result_E.jpg",
+      "winner": false
+    }
+  ]
+}

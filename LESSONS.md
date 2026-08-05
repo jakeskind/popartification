@@ -145,3 +145,5 @@ What won, and which axis carried it.
 - **jimothy (Seattle raccoon, short spine syndrome, speck on a lawn)** → *Christina's World* (Wyeth, MoMA). Brief was visual (small speck in vast monotonous field) + title honoring uniqueness/spine. Won on composition AND story: Christina Olson's muscular condition, crossing her field her own way. Position-matched both specks low-left with horizons up top.
 
 - **park-bench lawyers (caught mid-affair)** → *The Kiss* (Rodin). Won on pose (the one famous SEATED kiss; her arm to his head mirrored the photo) and buried story: everyone reads it as romance but it's Paolo and Francesca — an illicit affair caught in the act, from The Gates of Hell. When the photo IS a scandal, find the artwork whose hidden story is the same scandal.
+
+- **query** → *The Birth of Venus* (Sandro Botticelli). Hypotheses: image(0.25), image(0.25), context(0.2), context(0.15). Venus, but make it hydrotherapy — not a hair out of place.
