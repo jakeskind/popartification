@@ -1,38 +1,46 @@
-name: "POTD relay: fire muse's daily post"
+name: "POTD waiter: post at 10:00 AM ET sharp"
 
-# GitHub's scheduler has never once fired the muse repo's cron (private
-# repo, cause unknown) while this public repo's Actions demonstrably run.
-# So the alarm clock lives here: on schedule, dispatch muse's POTD workflow
-# via the API. Needs a GH_PAT secret (classic PAT with repo scope). The
-# script's already-posted-today guard makes every extra firing a no-op.
+# GitHub's scheduler fires cron hours late for this account — but workflow
+# runs, once started, keep time perfectly. So this job starts in ANY of six
+# hourly windows before the target, sleeps until exactly 14:00 UTC
+# (10:00 AM ET during daylight time; bump to 15:00 after DST ends), then
+# dispatches muse's posting workflow via the API — which fires instantly.
+# muse's already-posted-today guard makes every duplicate firing a no-op.
+# Public repo: sleeping runners cost nothing.
 on:
   schedule:
-    - cron: "5,35 11 * * *"   # 7:05 / 7:35 AM ET (daylight time)
-    - cron: "5 12 * * *"      # 8:05 insurance
+    - cron: "30 8-13 * * *"
   workflow_dispatch: {}
 
 jobs:
-  relay:
+  wait-and-fire:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 350
     steps:
-      - name: Dispatch muse POTD workflow
+      - name: Sleep until 14:00 UTC, then dispatch muse
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           if [ -z "$GH_PAT" ]; then
-            echo "::error::GH_PAT secret not set on this repo — cannot relay."
+            echo "::error::GH_PAT secret not set — cannot dispatch."
             exit 1
           fi
-          for wf in potd-instagram.yml potd-daily.yml; do
-            code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer $GH_PAT" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/jakeskind/muse/actions/workflows/$wf/dispatches" \
-              -d '{"ref":"main"}')
-            echo "$wf -> HTTP $code"
-            [ "$code" = "204" ] && exit 0
+          TARGET=$(date -u -d "today 14:00" +%s)
+          NOW=$(date -u +%s)
+          if [ "$NOW" -lt "$TARGET" ]; then
+            WAIT=$((TARGET - NOW))
+            echo "Sleeping $WAIT seconds until 14:00 UTC…"
+            sleep "$WAIT"
+          else
+            echo "Past 14:00 UTC — dispatching immediately."
+          fi
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer $GH_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/jakeskind/muse/actions/workflows/potd-instagram.yml/dispatches" \
+            -d '{"ref":"main"}')
+          echo "dispatch -> HTTP $code"
+          if [ "$code" != "204" ]; then
             cat /tmp/resp.json
-          done
-          echo "::error::No workflow accepted the dispatch."
-          exit 1
+            exit 1
+          fi
