@@ -12,6 +12,12 @@ on:
     - cron: "30 8-13 * * *"
   workflow_dispatch: {}
 
+# Only one waiter alive at a time: a later window replaces a sleeping one
+# instead of joining it at 14:00 for a synchronized double-dispatch.
+concurrency:
+  group: potd-waiter
+  cancel-in-progress: true
+
 jobs:
   wait-and-fire:
     runs-on: ubuntu-latest
