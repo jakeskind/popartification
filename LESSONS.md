@@ -149,3 +149,5 @@ What won, and which axis carried it.
 - **query** → *The Birth of Venus* (Sandro Botticelli). Hypotheses: image(0.25), image(0.25), context(0.2), context(0.15). Venus, but make it hydrotherapy — not a hair out of place.
 
 - **query** → *The Death of Marat* (Jacques-Louis David). Hypotheses: context(0.3), image(0.25), image(0.2), both(0.15). Same tub, same composure — one bleeds for the Revolution, one just skipped the SEC memo.
+
+- **hotd (Roddy the Ruin butchering Ormund Hightower)** → *Ivan the Terrible and His Son Ivan* (Repin, Tretyakov). Near match-cut composition: wild-haired elder gripping from behind a young man whose face streams blood, both mouths open. Elder-left/heir-right preserved, no mirror needed. Fantasy-violence stills pair naturally with history painting's real atrocities.
