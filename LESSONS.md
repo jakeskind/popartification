@@ -151,3 +151,5 @@ What won, and which axis carried it.
 - **query** → *The Death of Marat* (Jacques-Louis David). Hypotheses: context(0.3), image(0.25), image(0.2), both(0.15). Same tub, same composure — one bleeds for the Revolution, one just skipped the SEC memo.
 
 - **hotd (Roddy the Ruin butchering Ormund Hightower)** → *Ivan the Terrible and His Son Ivan* (Repin, Tretyakov). Near match-cut composition: wild-haired elder gripping from behind a young man whose face streams blood, both mouths open. Elder-left/heir-right preserved, no mirror needed. Fantasy-violence stills pair naturally with history painting's real atrocities.
+
+- **paul graham + founders around a laptop** → *The Anatomy Lesson of Dr. Nicolaes Tulp* (Rembrandt, Mauritshuis), mirrored so Tulp sits frame-left facing right like PG. Brief was 'many things around one thing' — that's the DEMONSTRATION composition: one authority operating, apprentices stacked at staggered heights, all gazes converging on a single lit object. Its cousins: Adoration scenes, Wright of Derby's Air Pump. Good default family for any crowd-around-a-screen photo.
